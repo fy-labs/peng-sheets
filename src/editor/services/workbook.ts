@@ -64,6 +64,37 @@ export function initializeTabOrderFromStructure(
 }
 
 /**
+ * Check if tab_order is redundant (matches natural order).
+ * Natural order is: all sheets first (index 0,1,2,...), then all documents (index 0,1,2,...).
+ * If tab_order matches this, it can be safely deleted to avoid unnecessary metadata.
+ */
+export function isTabOrderRedundant(tabOrder: TabOrderItem[], numSheets: number): boolean {
+    // Count expected items
+    const numDocs = tabOrder.filter((item) => item.type === 'document').length;
+    const expectedLength = numSheets + numDocs;
+
+    if (tabOrder.length !== expectedLength) {
+        return false;
+    }
+
+    // Check: first numSheets items are sheets in order 0,1,2,...
+    for (let i = 0; i < numSheets; i++) {
+        if (tabOrder[i].type !== 'sheet' || tabOrder[i].index !== i) {
+            return false;
+        }
+    }
+
+    // Check: remaining items are documents in order 0,1,2,...
+    for (let i = 0; i < numDocs; i++) {
+        if (tabOrder[numSheets + i].type !== 'document' || tabOrder[numSheets + i].index !== i) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
  * Update the tab display order in workbook metadata.
  * Pass null to delete tab_order (when metadata is not needed).
  */

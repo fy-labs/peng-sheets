@@ -962,8 +962,8 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                 : html``}
             <div class="content-area">
                 ${activeTab.type === 'sheet' && isSheetJSON(activeTab.data)
-                    ? isDocSheetType(activeTab.data as SheetJSON)
-                        ? html`
+                ? isDocSheetType(activeTab.data as SheetJSON)
+                    ? html`
                               <spreadsheet-document-view
                                   .title="${activeTab.title}"
                                   .content="${getSheetContent(activeTab.data as SheetJSON)}"
@@ -972,7 +972,7 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                                   @toolbar-action="${this._handleToolbarAction}"
                               ></spreadsheet-document-view>
                           `
-                        : html`
+                    : html`
                               <div class="sheet-container" style="height: 100%">
                                   <layout-container
                                       .layout="${(activeTab.data as SheetJSON).metadata?.layout}"
@@ -980,21 +980,21 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                                       .sheetIndex="${activeTab.sheetIndex}"
                                       .workbook="${this.workbook}"
                                       .dateFormat="${((this.config?.validation as Record<string, unknown>)
-                                          ?.dateFormat as string) || 'YYYY-MM-DD'}"
+                            ?.dateFormat as string) || 'YYYY-MM-DD'}"
                                       @save-requested="${this._handleSave}"
                                       @selection-change="${this._handleSelectionChange}"
                                   ></layout-container>
                               </div>
                           `
-                    : activeTab.type === 'document' && isDocumentJSON(activeTab.data)
-                      ? html`
+                : activeTab.type === 'document' && isDocumentJSON(activeTab.data)
+                    ? html`
                             <spreadsheet-document-view
                                 .title="${activeTab.title}"
                                 .content="${(activeTab.data as DocumentJSON).content}"
                                 @toolbar-action="${this._handleToolbarAction}"
                             ></spreadsheet-document-view>
                         `
-                      : activeTab.type === 'root'
+                    : activeTab.type === 'root'
                         ? html`
                               <spreadsheet-document-view
                                   .title="${activeTab.title}"
@@ -1006,12 +1006,12 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                           `
                         : html``}
                 ${activeTab.type === 'onboarding'
-                    ? html`
+                ? html`
                           <spreadsheet-onboarding
                               @create-spreadsheet="${this._onCreateSpreadsheet}"
                           ></spreadsheet-onboarding>
                       `
-                    : html``}
+                : html``}
             </div>
 
             <bottom-tabs
@@ -1020,17 +1020,17 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                 .editingIndex="${this.editingTabIndex}"
                 @tab-select="${(e: CustomEvent) => (this.activeTabIndex = e.detail.index)}"
                 @tab-edit-start="${(e: CustomEvent) =>
-                    this._handleTabDoubleClick(e.detail.index, this.tabs[e.detail.index])}"
+                this._handleTabDoubleClick(e.detail.index, this.tabs[e.detail.index])}"
                 @tab-rename="${(e: CustomEvent) =>
-                    this._handleTabRename(e.detail.index, e.detail.tab, e.detail.newName)}"
+                this._handleTabRename(e.detail.index, e.detail.tab, e.detail.newName)}"
                 @tab-context-menu="${(e: CustomEvent) => {
-                    this.tabContextMenu = {
-                        x: e.detail.x,
-                        y: e.detail.y,
-                        index: e.detail.index,
-                        tabType: e.detail.tabType
-                    };
-                }}"
+                this.tabContextMenu = {
+                    x: e.detail.x,
+                    y: e.detail.y,
+                    index: e.detail.index,
+                    tabType: e.detail.tabType
+                };
+            }}"
                 @tab-reorder="${(e: CustomEvent) => this._handleTabReorder(e.detail.fromIndex, e.detail.toIndex)}"
                 @add-sheet-click="${this._handleAddSheet}"
             ></bottom-tabs>
@@ -1042,14 +1042,14 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                 .tabType="${this.tabContextMenu?.tabType ?? 'sheet'}"
                 @rename="${() => this._renameTab(this.tabContextMenu!.index)}"
                 @delete="${() => {
-                    if (this.tabContextMenu?.tabType === 'sheet') {
-                        this._deleteSheet(this.tabContextMenu.index);
-                    } else if (this.tabContextMenu?.tabType === 'root') {
-                        this._deleteRootContent(this.tabContextMenu.index);
-                    } else {
-                        this._deleteDocument(this.tabContextMenu!.index);
-                    }
-                }}"
+                if (this.tabContextMenu?.tabType === 'sheet') {
+                    this._deleteSheet(this.tabContextMenu.index);
+                } else if (this.tabContextMenu?.tabType === 'root') {
+                    this._deleteRootContent(this.tabContextMenu.index);
+                } else {
+                    this._deleteDocument(this.tabContextMenu!.index);
+                }
+            }}"
                 @add-document="${this._addDocumentFromMenu}"
                 @add-sheet="${this._addSheetFromMenu}"
                 @close="${() => (this.tabContextMenu = null)}"
@@ -1059,30 +1059,29 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
             <confirmation-modal
                 .open="${this.confirmDeleteIndex !== null}"
                 title="${this.confirmDeleteIndex !== null && this.tabs[this.confirmDeleteIndex]?.type === 'document'
-                    ? t('deleteDocument')
-                    : this.confirmDeleteIndex !== null && this.tabs[this.confirmDeleteIndex]?.type === 'root'
-                      ? t('deleteOverviewTab')
-                      : t('deleteSheet')}"
+                ? t('deleteDocument')
+                : this.confirmDeleteIndex !== null && this.tabs[this.confirmDeleteIndex]?.type === 'root'
+                    ? t('deleteOverviewTab')
+                    : t('deleteSheet')}"
                 confirmLabel="${t('delete')}"
                 cancelLabel="${t('cancel')}"
                 @confirm="${this._performDelete}"
                 @cancel="${this._cancelDelete}"
             >
                 ${unsafeHTML(
-                    this.confirmDeleteIndex !== null && this.tabs[this.confirmDeleteIndex]?.type === 'root'
-                        ? t('deleteOverviewTabConfirm')
-                        : t(
-                              this.confirmDeleteIndex !== null &&
-                                  this.tabs[this.confirmDeleteIndex]?.type === 'document'
-                                  ? 'deleteDocumentConfirm'
-                                  : 'deleteSheetConfirm',
-                              `<span style="color: var(--vscode-textPreformat-foreground);">${
-                                  this.confirmDeleteIndex !== null
-                                      ? this.tabs[this.confirmDeleteIndex]?.title?.replace(/</g, '&lt;')
-                                      : ''
-                              }</span>`
-                          )
-                )}
+                        this.confirmDeleteIndex !== null && this.tabs[this.confirmDeleteIndex]?.type === 'root'
+                            ? t('deleteOverviewTabConfirm')
+                            : t(
+                                this.confirmDeleteIndex !== null &&
+                                    this.tabs[this.confirmDeleteIndex]?.type === 'document'
+                                    ? 'deleteDocumentConfirm'
+                                    : 'deleteSheetConfirm',
+                                `<span style="color: var(--vscode-textPreformat-foreground);">${this.confirmDeleteIndex !== null
+                                    ? this.tabs[this.confirmDeleteIndex]?.title?.replace(/</g, '&lt;')
+                                    : ''
+                                }</span>`
+                            )
+                    )}
             </confirmation-modal>
 
             <add-tab-dropdown
@@ -1144,9 +1143,40 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
     }
 
     private _addDocumentFromMenu() {
-        const targetTabOrderIndex = this.tabContextMenu!.index + 1;
+        const contextMenuIndex = this.tabContextMenu!.index;
+        const targetTabOrderIndex = contextMenuIndex + 1;
         this.tabContextMenu = null;
-        this._addDocumentAtPosition(targetTabOrderIndex);
+
+        // Check if this is a single-H1 workbook (no external document tabs)
+        const hasMultipleH1 = this.tabs.some((tab) => tab.type === 'document');
+
+        if (hasMultipleH1) {
+            // Multiple H1s: Add as traditional document section (# header)
+            this._addDocumentAtPosition(targetTabOrderIndex);
+        } else {
+            // Single H1: Add as doc sheet (## header inside workbook)
+            this.pendingAddSheet = true;
+
+            // Pass empty string to let the editor layer generate a unique name
+            // (dedup logic checks existing sheet names to avoid duplicates)
+            const newDocName = '';
+
+            // Root tabs exist in this.tabs but not in tab_order.
+            const rootTabCount = this.tabs.filter((tab) => tab.type === 'root').length;
+            const editorTabOrderIndex = targetTabOrderIndex - rootTabCount;
+
+            // Count Sheet items in tabs before the target position (for physical placement)
+            let sheetsBeforeTarget = 0;
+            for (let i = 0; i < Math.min(targetTabOrderIndex, this.tabs.length); i++) {
+                if (this.tabs[i].type === 'sheet') {
+                    sheetsBeforeTarget++;
+                }
+            }
+            const afterSheetIndex = sheetsBeforeTarget;
+
+            this._pendingNewTabIndex = targetTabOrderIndex;
+            this.spreadsheetService.addDocSheet(newDocName, '', afterSheetIndex, editorTabOrderIndex);
+        }
     }
 
     private _addSheetFromMenu() {
@@ -1169,7 +1199,17 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
         // Count valid tabs (excluding add-sheet)
         const validTabCount = this.tabs.filter((t) => t.type !== 'add-sheet').length;
 
+        // Root tabs exist in this.tabs but not in tab_order.
+        // Compute the editor-layer tab_order index by subtracting root tabs.
+        const rootTabCount = this.tabs.filter((t) => t.type === 'root').length;
+        const editorTabOrderIndex = targetTabOrderIndex - rootTabCount;
+
+        // addDocument uses "insert-after" semantics (splice at insertAfterTabOrderIndex + 1),
+        // unlike addSheet which uses direct splice position. Adjust accordingly.
+        const insertAfterIdx = editorTabOrderIndex - 1;
+
         // Generate default document name
+        // For multi-H1, count external document tabs for naming
         const docCount = this.tabs.filter((t) => t.type === 'document').length;
         const newDocName = `${t('documentNamePrefix')} ${docCount + 1}`;
 
@@ -1191,7 +1231,7 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
             }
 
             // Insert after the last doc (if any), otherwise just after WB
-            this.spreadsheetService.addDocument(newDocName, lastDocIndex, true, targetTabOrderIndex);
+            this.spreadsheetService.addDocument(newDocName, lastDocIndex, true, insertAfterIdx);
             return;
         }
 
@@ -1216,13 +1256,14 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
         }
 
         // Determine if we're inserting before or after workbook
-        // If there are sheets before target position, we're after workbook
-        const sheetsBeforeTarget =
-            this.tabs.slice(0, Math.min(targetTabOrderIndex, this.tabs.length)).filter((tab) => tab.type === 'sheet')
-                .length > 0;
-        const afterWorkbook = sheetsBeforeTarget;
+        // Root tab represents the workbook, so include it in the check
+        const hasWorkbookBeforeTarget =
+            this.tabs
+                .slice(0, Math.min(targetTabOrderIndex, this.tabs.length))
+                .filter((tab) => tab.type === 'sheet' || tab.type === 'root').length > 0;
+        const afterWorkbook = hasWorkbookBeforeTarget;
 
-        this.spreadsheetService.addDocument(newDocName, afterDocIndex, afterWorkbook, targetTabOrderIndex);
+        this.spreadsheetService.addDocument(newDocName, afterDocIndex, afterWorkbook, insertAfterIdx);
     }
 
     /**
@@ -1241,18 +1282,21 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
         // The new sheet will be inserted at this sheet index position
         const afterSheetIndex = sheetsBeforeTarget;
 
-        // Generate default sheet name
-        let newSheetName = `${t('sheetNamePrefix')} 1`;
-        if (this.workbook && this.workbook.sheets) {
-            newSheetName = `${t('sheetNamePrefix')} ${this.workbook.sheets.length + 1}`;
-        }
+        // Root tabs exist in this.tabs but not in tab_order.
+        // Compute the editor-layer tab_order index by subtracting root tabs.
+        const rootTabCount = this.tabs.filter((t) => t.type === 'root').length;
+        const editorTabOrderIndex = targetTabOrderIndex - rootTabCount;
+
+        // Pass empty string to let the editor layer generate a unique name
+        // (dedup logic checks existing sheet names to avoid duplicates)
+        const newSheetName = '';
 
         // Store pending add state
         this.pendingAddSheet = true;
         this._pendingNewTabIndex = targetTabOrderIndex;
 
         // Call service with the calculated position
-        this.spreadsheetService.addSheet(newSheetName, afterSheetIndex, targetTabOrderIndex);
+        this.spreadsheetService.addSheet(newSheetName, afterSheetIndex, editorTabOrderIndex);
     }
 
     private _cancelDelete() {
@@ -1318,11 +1362,8 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
         // Setting _pendingNewTabIndex would point to the add-sheet button position,
         // which breaks selection.
 
-        // Calculate the sheet name
-        let newSheetName = `${t('sheetNamePrefix')} 1`;
-        if (this.workbook && this.workbook.sheets) {
-            newSheetName = `${t('sheetNamePrefix')} ${this.workbook.sheets.length + 1}`;
-        }
+        // Pass empty string to let the editor layer generate a unique name
+        const newSheetName = '';
 
         // Calculate append indices (same as _addSheetAtPosition for end-of-list)
         const validTabs = this.tabs.filter((t) => t.type === 'sheet' || t.type === 'document');
@@ -1358,12 +1399,8 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
             // Single H1 (file is entirely workbook): Add as doc sheet (inside workbook)
             this.pendingAddSheet = true;
 
-            // Calculate the doc sheet name
-            let newDocName = `${t('documentNamePrefix')} 1`;
-            if (this.workbook && this.workbook.sheets) {
-                const docCount = this.workbook.sheets.filter((s: SheetJSON) => s.type === 'doc').length;
-                newDocName = `${t('documentNamePrefix')} ${docCount + 1}`;
-            }
+            // Pass empty string to let the editor layer generate a unique name
+            const newDocName = '';
 
             // Calculate append indices
             const validTabs = this.tabs.filter((t) => t.type === 'sheet' || t.type === 'document');

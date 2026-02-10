@@ -8,6 +8,13 @@ All notable changes to the "PengSheets" extension will be documented in this fil
 - **Simplified Workbook Detection**: Documents with a single H1 header are now automatically recognized as a Workbook. The previous convention of using `# Tables` as the Workbook marker is no longer required. Documents with multiple H1 headers continue to work as before (backward compatible).
 - **Overview Tab**: Content directly under the H1 header is now displayed as a dedicated "Overview" tab. This tab supports renaming and deletion via context menu.
 
+### Fixed
+- **Context Menu Add Position**: Fixed a bug where "Add New Sheet" / "Add New Document" from the context menu inserted at position +1 when an Overview (root) tab was present.
+- **Redundant tab_order Metadata**: Fixed unnecessary `tab_order` metadata being generated when adding documents to workbooks with natural ordering.
+- **Document Add in Single-H1 Workbook**: Fixed "Add Document" from context menu creating an H1 header (breaking workbook structure) instead of an H2 doc-sheet inside the workbook.
+- **Document Position from Root Tab**: Fixed documents being placed before the workbook section when added from the Overview tab's context menu.
+- **Name Counter Duplicates**: Fixed sheet/document name generation creating duplicate names (e.g., "Sheet 2" when "Sheet 2" already exists). Names are now generated with conflict avoidance.
+
 ## [1.1.0] - 2026-01-22
 
 ### Added

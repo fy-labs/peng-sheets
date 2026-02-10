@@ -10,6 +10,7 @@ import {
     applySheetUpdate,
     generateAndGetRange,
     initializeTabOrderFromStructure,
+    isTabOrderRedundant,
     reorderTabMetadata,
     updateWorkbook
 } from './workbook';
@@ -113,19 +114,7 @@ export function addSheet(
         }
 
         // Cleanup redundant tab_order
-        let isRedundant = true;
-        if (tabOrder.length !== newSheets.length) {
-            isRedundant = false;
-        } else {
-            for (let i = 0; i < tabOrder.length; i++) {
-                if (tabOrder[i].type !== 'sheet' || tabOrder[i].index !== i) {
-                    isRedundant = false;
-                    break;
-                }
-            }
-        }
-
-        if (isRedundant && currentMetadata.tab_order) {
+        if (isTabOrderRedundant(tabOrder, newSheets.length) && currentMetadata.tab_order) {
             delete currentMetadata.tab_order;
         }
 
@@ -228,19 +217,7 @@ export function addDocSheet(
         }
 
         // Cleanup redundant tab_order
-        let isRedundant = true;
-        if (tabOrder.length !== newSheets.length) {
-            isRedundant = false;
-        } else {
-            for (let i = 0; i < tabOrder.length; i++) {
-                if (tabOrder[i].type !== 'sheet' || tabOrder[i].index !== i) {
-                    isRedundant = false;
-                    break;
-                }
-            }
-        }
-
-        if (isRedundant && currentMetadata.tab_order) {
+        if (isTabOrderRedundant(tabOrder, newSheets.length) && currentMetadata.tab_order) {
             delete currentMetadata.tab_order;
         }
 

@@ -7,7 +7,12 @@
 import { Workbook } from 'md-spreadsheet-parser';
 import type { EditorContext } from '../context';
 import type { UpdateResult, EditorConfig, TabOrderItem } from '../types';
-import { generateAndGetRange, getWorkbookRange, initializeTabOrderFromStructure } from './workbook';
+import {
+    generateAndGetRange,
+    getWorkbookRange,
+    initializeTabOrderFromStructure,
+    isTabOrderRedundant
+} from './workbook';
 
 // =============================================================================
 // Helper Functions
@@ -226,6 +231,12 @@ export function addDocument(
         }
 
         metadata.tab_order = tabOrder;
+
+        // Cleanup redundant tab_order
+        if (isTabOrderRedundant(tabOrder, (workbook.sheets ?? []).length)) {
+            delete metadata.tab_order;
+        }
+
         const newWorkbook = new Workbook({ ...workbook, metadata });
         context.updateWorkbook(newWorkbook);
     }
