@@ -36,7 +36,7 @@ export class EditorContext {
     private static instance: EditorContext | null = null;
     private state: EditorState = createEditorState();
 
-    private constructor() {}
+    private constructor() { }
 
     static getInstance(): EditorContext {
         if (!EditorContext.instance) {
@@ -148,12 +148,19 @@ export class EditorContext {
 
         const configDict: EditorConfig = configJson ? JSON.parse(configJson) : {};
 
+        // Default header levels for generator:
+        // - sheetHeaderLevel defaults to 2 (## Sheet)
+        // - tableHeaderLevel defaults to sheetLevel + 1 (### Table)
+        // Without these, toMarkdown() omits table name headers for auto-detected workbooks.
+        const sheetLevel = configDict.sheetHeaderLevel ?? 2;
+        const tableLevel = configDict.tableHeaderLevel ?? sheetLevel + 1;
+
         this.state.schema = new MultiTableParsingSchema({
             // Only override rootMarker if user explicitly configured it
             // Parser defaults to '# Tables' which also works
             rootMarker: configDict.rootMarker,
-            sheetHeaderLevel: configDict.sheetHeaderLevel ?? undefined,
-            tableHeaderLevel: configDict.tableHeaderLevel ?? undefined,
+            sheetHeaderLevel: sheetLevel,
+            tableHeaderLevel: tableLevel,
             captureDescription: configDict.captureDescription ?? true,
             columnSeparator: configDict.columnSeparator ?? '|',
             headerSeparatorChar: configDict.headerSeparatorChar ?? '-',
@@ -162,6 +169,15 @@ export class EditorContext {
         });
 
         let workbook = parseWorkbook(this.state.mdText, this.state.schema);
+
+        // Update schema with parser-detected rootMarker so toMarkdown
+        // generates the correct workbook header (e.g., "# Doc" not "# Workbook")
+        if (!configDict.rootMarker && workbook.name) {
+            this.state.schema = new MultiTableParsingSchema({
+                ...this.state.schema,
+                rootMarker: `# ${workbook.name}`
+            });
+        }
 
         // Initialize tab_order if not present in metadata
         if (!workbook.metadata?.tab_order) {
