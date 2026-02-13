@@ -1157,9 +1157,7 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
             // Single H1: Add as doc sheet (## header inside workbook)
             this.pendingAddSheet = true;
 
-            // Pass empty string to let the editor layer generate a unique name
-            // (dedup logic checks existing sheet names to avoid duplicates)
-            const newDocName = '';
+            const newDocName = this._generateUniqueDocName();
 
             // Root tabs exist in this.tabs but not in tab_order.
             const rootTabCount = this.tabs.filter((tab) => tab.type === 'root').length;
@@ -1287,9 +1285,7 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
         const rootTabCount = this.tabs.filter((t) => t.type === 'root').length;
         const editorTabOrderIndex = targetTabOrderIndex - rootTabCount;
 
-        // Pass empty string to let the editor layer generate a unique name
-        // (dedup logic checks existing sheet names to avoid duplicates)
-        const newSheetName = '';
+        const newSheetName = this._generateUniqueSheetName();
 
         // Store pending add state
         this.pendingAddSheet = true;
@@ -1362,8 +1358,7 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
         // Setting _pendingNewTabIndex would point to the add-sheet button position,
         // which breaks selection.
 
-        // Pass empty string to let the editor layer generate a unique name
-        const newSheetName = '';
+        const newSheetName = this._generateUniqueSheetName();
 
         // Calculate append indices (same as _addSheetAtPosition for end-of-list)
         const validTabs = this.tabs.filter((t) => t.type === 'sheet' || t.type === 'document');
@@ -1399,8 +1394,7 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
             // Single H1 (file is entirely workbook): Add as doc sheet (inside workbook)
             this.pendingAddSheet = true;
 
-            // Pass empty string to let the editor layer generate a unique name
-            const newDocName = '';
+            const newDocName = this._generateUniqueDocName();
 
             // Calculate append indices
             const validTabs = this.tabs.filter((t) => t.type === 'sheet' || t.type === 'document');
@@ -1414,8 +1408,41 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
         }
     }
 
+    /**
+     * Generate a unique sheet name using i18n prefix (e.g., "シート 1", "Sheet 2").
+     * Checks existing tab names to avoid duplicates.
+     */
+    private _generateUniqueSheetName(): string {
+        const prefix = t('sheetNamePrefix');
+        const existingNames = this.tabs
+            .filter((tab) => tab.type === 'sheet')
+            .map((tab) => tab.title);
+        // Start from total count + 1 to avoid cross-language duplicates
+        // (e.g., "Sheet 1" exists → next should be "シート 2", not "シート 1")
+        let i = existingNames.length + 1;
+        while (existingNames.includes(`${prefix} ${i}`)) i++;
+        return `${prefix} ${i}`;
+    }
+
+    /**
+     * Generate a unique document name using i18n prefix (e.g., "ドキュメント 1", "Document 2").
+     * Documents count independently from sheets.
+     */
+    private _generateUniqueDocName(): string {
+        const prefix = t('documentNamePrefix');
+        // Count only document-type tabs, NOT sheets
+        const docNames = this.tabs
+            .filter((tab) => tab.type === 'document' || (tab.type === 'sheet' && isDocumentJSON(tab.data)))
+            .map((tab) => tab.title);
+        // Start from doc count + 1 to avoid cross-language duplicates
+        let i = docNames.length + 1;
+        while (docNames.includes(`${prefix} ${i}`)) i++;
+        return `${prefix} ${i}`;
+    }
+
     private _onCreateSpreadsheet() {
-        this.spreadsheetService.createSpreadsheet();
+        const sheetName = this._generateUniqueSheetName();
+        this.spreadsheetService.createSpreadsheet(sheetName);
     }
 
     async _parseWorkbook() {
