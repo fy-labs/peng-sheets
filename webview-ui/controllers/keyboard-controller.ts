@@ -16,8 +16,8 @@ export class KeyboardController implements ReactiveController {
         host.addController(this);
     }
 
-    hostConnected() { }
-    hostDisconnected() { }
+    hostConnected() {}
+    hostDisconnected() {}
 
     handleKeyDown(e: KeyboardEvent) {
         if (this.host.editCtrl.isEditing) {
