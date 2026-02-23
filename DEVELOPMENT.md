@@ -468,6 +468,24 @@ it('should remove tab_order', () => {
 
 ---
 
+## 6.10 Known Bug Patterns & Hazards
+
+### The "Multiple updateRange" Hazard (Content Prepending Bug)
+
+**Problem:** If multiple `updateRange` messages are sent to VS Code in quick succession without waiting for synchronization (e.g., updating a sheet name, then updating its content separately in the same synchronous block), the second message calculates its replacement range based on the *old* file state.
+
+**The Bug Mechanism** (as seen in older `docsheet-save-bug`):
+1. **Initial State**: File has 6 lines.
+2. **Operation A**: Modifies content (e.g., renames sheet) causing the file to grow. It sends `{ startLine: 0, endLine: 5, content: '7 lines of text' }`.
+3. VS Code applies Operation A. The file is now 7 lines.
+4. **Operation B**: Happens immediately after and sends `{ startLine: 0, endLine: 5, content: 'new content for 7 lines' }`.
+5. **The Failure**: Because `endLine` is still `5`, VS Code only replaces lines 0-4 of the new 7-line file. Lines 5-6 from Operation A are left intact, resulting in old content bleeding into the new content (e.g., an old trailing word like "before" remains at the end).
+
+**The Fix / Prevention:**
+Always batch operations that mutate the document sequentially. By using the `startBatch()` and `endBatch()` pattern (see 6.6), the system ensures that only *one* `updateRange` message with the final, fully-resolved content is sent to VS Code.
+
+---
+
 ## 7. For Maintainers
 
 The release procedure (version bumping, changelog updates, and publishing to marketplaces) has been moved to the root [`MAINTAINER_GUIDE.md`](../MAINTAINER_GUIDE.md). Please refer to that document for publishing instructions.
