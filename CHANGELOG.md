@@ -4,6 +4,7 @@ All notable changes to the "PengSheets" extension will be documented in this fil
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-02-23
 ### Changed
 - **Simplified Workbook Detection**: Documents with a single H1 header are now automatically recognized as a Workbook. The previous convention of using `# Tables` as the Workbook marker is no longer required. Documents with multiple H1 headers continue to work as before (backward compatible).
 - **Overview Tab**: Content directly under the H1 header is now displayed as a dedicated "Overview" tab. This tab supports renaming and deletion via context menu.

@@ -4,7 +4,7 @@
     "displayName": "PengSheets - Markdown Spreadsheet Editor",
     "description": "Transform Markdown tables into a powerful spreadsheet editor with Excel-like editing, multi-sheet workbooks, and real-time synchronization.",
     "icon": "images/icon.png",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "engines": {
         "vscode": "^1.90.0"
     },
@@ -239,6 +239,6 @@
         "vitest": "^4.0.15"
     },
     "dependencies": {
-        "md-spreadsheet-parser": "file:../md-spreadsheet-parser/packages/npm"
+        "md-spreadsheet-parser": "^1.3.1"
     }
 }
