@@ -36,7 +36,7 @@ export class EditorContext {
     private static instance: EditorContext | null = null;
     private state: EditorState = createEditorState();
 
-    private constructor() { }
+    private constructor() {}
 
     static getInstance(): EditorContext {
         if (!EditorContext.instance) {

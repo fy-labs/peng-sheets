@@ -8,7 +8,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fixture, html } from '@open-wc/testing';
 import '../../../components/spreadsheet-table';
 import { queryView, awaitView } from '../../helpers/test-helpers';
-import { SpreadsheetTable, TableJSON } from '../../../components/spreadsheet-table';
+import { SpreadsheetTable } from '../../../components/spreadsheet-table';
+import type { TableJSON } from '../../../types';
 
 describe('Clipboard Verification', () => {
     const createMockTable = (): TableJSON => ({
@@ -21,6 +22,7 @@ describe('Clipboard Verification', () => {
             ['7', '8', '9']
         ],
         metadata: {},
+        alignments: ['left', 'left', 'left'],
         start_line: 0,
         end_line: 5
     });
@@ -175,6 +177,41 @@ describe('Clipboard Verification', () => {
                 .calls[0][0];
             // Value with tab should be quoted
             expect(writtenText).to.include('"');
+        });
+    });
+
+    describe('Cut', () => {
+        it('copies to clipboard and deletes cell content on Ctrl+X', async () => {
+            const el = await fixture<SpreadsheetTable>(
+                html`<spreadsheet-table .table="${createMockTable()}"></spreadsheet-table>`
+            );
+            await awaitView(el);
+
+            // Select cell [1, 1] with value "5"
+            const cell = queryView(el, '.cell[data-row="1"][data-col="1"]') as HTMLElement;
+            cell.click();
+            await awaitView(el);
+
+            // Spy on the range-edit event to verify deletion
+            const editSpy = vi.fn();
+            el.addEventListener('range-edit', editSpy);
+
+            // Press Ctrl+X
+            cell.dispatchEvent(
+                new KeyboardEvent('keydown', { key: 'x', ctrlKey: true, bubbles: true, composed: true })
+            );
+
+            // Wait for async clipboard operation and state updates
+            await new Promise((r) => setTimeout(r, 50));
+
+            // Verify copy
+            expect(navigator.clipboard.writeText).toHaveBeenCalledWith('5');
+
+            // Verify deletion (range-edit event dispatched with empty string)
+            expect(editSpy).toHaveBeenCalled();
+            expect(editSpy.mock.calls[0][0].detail.newValue).toBe('');
+            expect(editSpy.mock.calls[0][0].detail.startRow).toBe(1);
+            expect(editSpy.mock.calls[0][0].detail.startCol).toBe(1);
         });
     });
 

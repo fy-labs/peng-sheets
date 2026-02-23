@@ -33,11 +33,11 @@ test text
 
         // Simulate _addSheetAtPosition with headers (via SpreadsheetService)
         const result = editor.addSheet(
-            '',                                    // empty name → editor dedup
-            ['Column 1', 'Column 2', 'Column 3'],  // default headers
-            'Table 1',                              // default table name
-            null,                                   // afterSheetIndex
-            null                                    // targetTabOrderIndex
+            '', // empty name → editor dedup
+            ['Column 1', 'Column 2', 'Column 3'], // default headers
+            'Table 1', // default table name
+            null, // afterSheetIndex
+            null // targetTabOrderIndex
         );
         expect(result.error).toBeUndefined();
 
@@ -73,11 +73,11 @@ test text
 
         // Simulate _addSheetAtPosition: afterSheetIndex=1, tabOrderIndex=1
         const result = editor.addSheet(
-            '',                                    // empty name
-            ['Column 1', 'Column 2', 'Column 3'],  // headers
-            'Table 1',                              // table name
-            1,                                      // afterSheetIndex
-            1                                       // targetTabOrderIndex
+            '', // empty name
+            ['Column 1', 'Column 2', 'Column 3'], // headers
+            'Table 1', // table name
+            1, // afterSheetIndex
+            1 // targetTabOrderIndex
         );
         expect(result.error).toBeUndefined();
 

@@ -107,8 +107,6 @@ Markdown Spreadsheet Suite と一般的なスプレッドシート（Excel）の
 
 <!-- md-spreadsheet-table-metadata: {"column_widths": {"2": 170, "3": 463}} -->
 
-Excelユーザーが直感的に操作できるキーボードショートカット一覧です。
-
 | Action | Windows/Linux | macOS | Context |
 | --- | --- | --- | --- |
 | **Undo** | `Ctrl+Z` | `Cmd+Z` | Global |
@@ -136,8 +134,6 @@ Excelユーザーが直感的に操作できるキーボードショートカッ
 | **Undo/Redo System** | 40 | 40 | 0 | 0 | 95.0% | ✅ Stable |
 | **Performance (10k rows)** | 10 | 8 | 1 | 1 | - | ⚠️ Perf |
 
-プロジェクトメンバーの割り当て状況です。
-
 | Member | Role | Core Parsing | Webview UI | Testing | Load |
 | --- | --- | --- | --- | --- | --- |
 | **Alice** | Lead | 40% | 10% | 10% | 60% |
@@ -161,15 +157,12 @@ Excelユーザーが直感的に操作できるキーボードショートカッ
 
 <!-- md-spreadsheet-table-metadata: {"validation": {"0": {"type": "date"}}} -->
 
-第2四半期の売上予測データです。
-
 | Month | Region | Growth Target | Expected Revenue | Risk Factor | Probability |
 | --- | --- | --- | --- | --- | --- |
 | **April** | Global | +5% | $15,000 | Low | 90% |
 | **May** | JP-Region | +10% | $8,000 | Medium | 70% |
 | **June** | US-Region | +8% | $12,000 | High | 50% |
 | **Total** | - | - | $35,000 | - | - |
-
 
 # Appendix
 
@@ -179,3 +172,5 @@ Excelユーザーが直感的に操作できるキーボードショートカッ
 - **Sheet**: A tab within a Workbook, defined by a second-level header.
 - **Table**: A Markdown grid within a Sheet.
 - **Hybrid Notebook**: A file containing both standard documentation and spreadsheet data.
+
+## Test

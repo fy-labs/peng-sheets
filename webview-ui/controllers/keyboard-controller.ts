@@ -16,8 +16,8 @@ export class KeyboardController implements ReactiveController {
         host.addController(this);
     }
 
-    hostConnected() {}
-    hostDisconnected() {}
+    hostConnected() { }
+    hostDisconnected() { }
 
     handleKeyDown(e: KeyboardEvent) {
         if (this.host.editCtrl.isEditing) {
@@ -122,6 +122,14 @@ export class KeyboardController implements ReactiveController {
         if (isControl && (e.key === 'c' || e.key === 'C')) {
             e.preventDefault();
             this.host.clipboardCtrl.copyToClipboard();
+            return;
+        }
+
+        if (isControl && (e.key === 'x' || e.key === 'X')) {
+            e.preventDefault();
+            this.host.clipboardCtrl.copyToClipboard().then(() => {
+                this.host.editCtrl.deleteSelection();
+            });
             return;
         }
 
