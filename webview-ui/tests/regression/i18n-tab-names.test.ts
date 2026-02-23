@@ -352,4 +352,33 @@ Some content
             expect(newName).toBe('ドキュメント 2');
         });
     });
+
+    describe('onboarding: createNewSpreadsheet uses i18n for table name', () => {
+        it('English: first table named "Table 1"', () => {
+            setLanguage('en');
+            const sheetName = `${t('sheetNamePrefix')} 1`;
+            const tableName = `${t('tableNamePrefix')} 1`;
+            editor.initializeWorkbook('', '{}');
+            const result = editor.createNewSpreadsheet(['Column 1', 'Column 2', 'Column 3'], sheetName, tableName);
+
+            expect(result.error).toBeUndefined();
+            const state = JSON.parse(editor.getState());
+            const tableNames = state.workbook.sheets[0].tables.map((t: { name: string }) => t.name);
+            expect(tableNames).toContain('Table 1');
+        });
+
+        it('Japanese: first table named "テーブル 1"', () => {
+            setLanguage('ja');
+            const sheetName = `${t('sheetNamePrefix')} 1`;
+            const tableName = `${t('tableNamePrefix')} 1`;
+            editor.initializeWorkbook('', '{}');
+            const result = editor.createNewSpreadsheet(['列名1', '列名2', '列名3'], sheetName, tableName);
+
+            expect(result.error).toBeUndefined();
+            const state = JSON.parse(editor.getState());
+            const tableNames = state.workbook.sheets[0].tables.map((t: { name: string }) => t.name);
+            expect(tableNames).toContain('テーブル 1');
+            expect(tableNames).not.toContain('Table 1');
+        });
+    });
 });

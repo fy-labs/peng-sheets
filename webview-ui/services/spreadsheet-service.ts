@@ -544,7 +544,8 @@ export class SpreadsheetService {
 
     public createSpreadsheet(sheetName?: string) {
         const headers = this._getDefaultColumnHeaders();
-        this._performAction(() => editor.createNewSpreadsheet(headers, sheetName ?? ''));
+        const tableName = this._getDefaultTableName();
+        this._performAction(() => editor.createNewSpreadsheet(headers, sheetName ?? '', tableName));
     }
 
     public renameSheet(sheetIdx: number, newName: string) {

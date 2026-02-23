@@ -44,12 +44,16 @@ export function getState(): string {
 /**
  * Create a new spreadsheet with initial columns.
  */
-export function createNewSpreadsheet(columnNames: string[] | null = null, sheetName: string = ''): UpdateResult {
+export function createNewSpreadsheet(
+    columnNames: string[] | null = null,
+    sheetName: string = '',
+    tableName: string | null = null
+): UpdateResult {
     const context = getContext();
     if (!context.workbook) {
         initializeWorkbook('', '{}');
     }
-    return sheetService.addSheet(context, sheetName, columnNames);
+    return sheetService.addSheet(context, sheetName, columnNames, tableName);
 }
 
 // =============================================================================
