@@ -16,7 +16,7 @@ export function initializeTabOrderFromStructure(
     numSheets: number
 ): TabOrderItem[] {
     const configDict: EditorConfig = config ? JSON.parse(config) : {};
-    const rootMarker = configDict.rootMarker ?? '# Tables';
+    const rootMarker = configDict.rootMarker ?? '# Workbook';
 
     if (!mdText) {
         // No markdown text, just return sheets in order
@@ -64,6 +64,37 @@ export function initializeTabOrderFromStructure(
 }
 
 /**
+ * Check if tab_order is redundant (matches natural order).
+ * Natural order is: all sheets first (index 0,1,2,...), then all documents (index 0,1,2,...).
+ * If tab_order matches this, it can be safely deleted to avoid unnecessary metadata.
+ */
+export function isTabOrderRedundant(tabOrder: TabOrderItem[], numSheets: number): boolean {
+    // Count expected items
+    const numDocs = tabOrder.filter((item) => item.type === 'document').length;
+    const expectedLength = numSheets + numDocs;
+
+    if (tabOrder.length !== expectedLength) {
+        return false;
+    }
+
+    // Check: first numSheets items are sheets in order 0,1,2,...
+    for (let i = 0; i < numSheets; i++) {
+        if (tabOrder[i].type !== 'sheet' || tabOrder[i].index !== i) {
+            return false;
+        }
+    }
+
+    // Check: remaining items are documents in order 0,1,2,...
+    for (let i = 0; i < numDocs; i++) {
+        if (tabOrder[numSheets + i].type !== 'document' || tabOrder[numSheets + i].index !== i) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
  * Update the tab display order in workbook metadata.
  * Pass null to delete tab_order (when metadata is not needed).
  */
@@ -76,9 +107,73 @@ export function updateWorkbookTabOrder(context: EditorContext, tabOrder: TabOrde
         } else {
             currentMetadata.tab_order = tabOrder;
         }
+        // If metadata is empty after deletion, set to undefined to avoid empty {} in output
+        const finalMetadata = Object.keys(currentMetadata).length > 0 ? currentMetadata : undefined;
         return new Workbook({
             ...wb,
-            metadata: currentMetadata
+            metadata: finalMetadata
+        });
+    };
+
+    return updateWorkbook(context, wbTransform);
+}
+
+/**
+ * Update workbook metadata with the provided fields.
+ * Merges the updates with existing metadata.
+ */
+export function updateWorkbookMetadata(context: EditorContext, updates: Record<string, unknown>): UpdateResult {
+    const wbTransform = (wb: Workbook): Workbook => {
+        const currentMetadata = wb.metadata ? { ...wb.metadata } : {};
+        const newMetadata = { ...currentMetadata, ...updates };
+        // If metadata is empty, set to undefined to avoid empty {} in output
+        const finalMetadata = Object.keys(newMetadata).length > 0 ? newMetadata : undefined;
+        return new Workbook({
+            ...wb,
+            metadata: finalMetadata
+        });
+    };
+
+    return updateWorkbook(context, wbTransform);
+}
+
+/**
+ * Update the root content of a workbook.
+ * Root content is the markdown content that appears before any sheets.
+ */
+export function updateRootContent(context: EditorContext, content: string): UpdateResult {
+    const wbTransform = (wb: Workbook): Workbook => {
+        return new Workbook({
+            ...wb,
+            rootContent: content
+        });
+    };
+
+    return updateWorkbook(context, wbTransform);
+}
+
+/**
+ * Delete the root content of a workbook (set to empty string).
+ */
+export function deleteRootContent(context: EditorContext): UpdateResult {
+    const wbTransform = (wb: Workbook): Workbook => {
+        return new Workbook({
+            ...wb,
+            rootContent: ''
+        });
+    };
+
+    return updateWorkbook(context, wbTransform);
+}
+
+/**
+ * Rename a workbook (update workbook name).
+ */
+export function renameWorkbook(context: EditorContext, newName: string): UpdateResult {
+    const wbTransform = (wb: Workbook): Workbook => {
+        return new Workbook({
+            ...wb,
+            name: newName
         });
     };
 
@@ -180,11 +275,22 @@ export function generateAndGetRange(context: EditorContext): UpdateResult {
         // Parse file structure from mdText to get true natural order
         const mdText = context.mdText;
         const configDict = context.config ? JSON.parse(context.config) : {};
-        const rootMarker = configDict.rootMarker ?? '# Tables';
         const sheetHeaderLevel = configDict.sheetHeaderLevel ?? 2;
 
-        // Get workbook position in file
-        const [wbStart, wbEnd] = getWorkbookRange(mdText, rootMarker, sheetHeaderLevel);
+        // Get workbook position in file - use parser-detected range if available
+        let wbStart: number;
+        let wbEnd: number;
+        let rootMarker: string;
+
+        if (workbook.startLine !== undefined && workbook.endLine !== undefined && workbook.name) {
+            wbStart = workbook.startLine;
+            wbEnd = workbook.endLine;
+            // workbook.name is just the name without # prefix, add it for line comparison
+            rootMarker = `# ${workbook.name}`;
+        } else {
+            rootMarker = configDict.rootMarker ?? '# Workbook';
+            [wbStart, wbEnd] = getWorkbookRange(mdText, rootMarker, sheetHeaderLevel);
+        }
         const lines = mdText.split('\n');
 
         // Find docs before and after WB in the ACTUAL FILE
@@ -247,18 +353,25 @@ export function generateAndGetRange(context: EditorContext): UpdateResult {
     const cleanWorkbook = context.workbook;
 
     // Generate Markdown (Full Workbook)
+    // Call toMarkdown when workbook has sheets OR rootContent
     let newMd = '';
-    if (cleanWorkbook && (cleanWorkbook.sheets ?? []).length > 0) {
+    const hasSheets = (cleanWorkbook?.sheets ?? []).length > 0;
+    const hasRootContent = !!cleanWorkbook?.rootContent;
+    if (cleanWorkbook && (hasSheets || hasRootContent)) {
         if (schema) {
             newMd = cleanWorkbook.toMarkdown(schema);
         }
     }
 
     // Determine replacement range
+    // ALWAYS use getWorkbookRange for dynamic detection since mdText may have changed
+    // (Parser values workbook.startLine/endLine become stale after addDocument/moveDocument)
     const configDict: EditorConfig = config ? JSON.parse(config) : {};
-    const rootMarker = configDict.rootMarker ?? '# Tables';
     const sheetHeaderLevel = configDict.sheetHeaderLevel ?? 2;
 
+    // Build rootMarker from workbook name or config
+    const wbName = workbook?.name;
+    const rootMarker = wbName ? `# ${wbName}` : (configDict.rootMarker ?? '# Workbook');
     const [startLine, rawEndLine] = getWorkbookRange(mdText, rootMarker, sheetHeaderLevel);
     const lines = mdText.split('\n');
 
@@ -266,9 +379,12 @@ export function generateAndGetRange(context: EditorContext): UpdateResult {
     let endCol = 0;
 
     if (endLine >= lines.length) {
+        // Range extends to EOF - replace everything to the end of the last line
         endLine = lines.length - 1;
         endCol = endLine >= 0 ? lines[endLine].length : 0;
     } else {
+        // Range ends before EOF (e.g., there's another H1 section after)
+        // endLine points to the next section's header, so we need to replace up to (but not including) that line
         if (endLine > 0) {
             endLine = endLine - 1;
             endCol = lines[endLine].length;

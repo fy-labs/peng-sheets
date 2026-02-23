@@ -135,12 +135,4 @@ describe('Document Move Off-by-One Bug', () => {
             expect(action.physicalMove?.type).toBe('move-sheet');
         });
     });
-
-    describe('Add document at position scenarios', () => {
-        // TODO: Add proper integration test for document addition
-        // This requires testing with actual editor state, not just determineReorderAction
-        it.skip('Adding doc at end should calculate correct target index', () => {
-            // Placeholder - this test needs editor integration
-        });
-    });
 });

@@ -1090,15 +1090,45 @@ function handleDocToDoc(
         // =====================================================================
         case 'DD3_cross_before_to_after': {
             // Cross WB: Doc before WB moves to after WB
-            // toAfterWorkbook=false lets moveDocumentSection append to EOF when toDocIndex=null
-            // This is correct for D1→after D2 case where D1 should follow D2
+            // Two sub-cases:
+            // - D4: Doc moves to FIRST position after WB (before any docsAfterWb)
+            //       → toAfterWorkbook=true to insert at wbEnd
+            // - D3: Doc moves AFTER another doc that is after WB
+            //       → toAfterWorkbook=false with toDocIndex to insert at specific position
+
+            // Check if moving to first position after WB
+            // This happens when toTab is the first doc after WB in visual order
+            const firstDocAfterWbIndex =
+                ctx.currentFileStructure.docsAfterWb.length > 0
+                    ? Math.min(...ctx.currentFileStructure.docsAfterWb)
+                    : null;
+
+            const isMovingToFirstAfterWb = toTab?.type === 'document' && toTab.docIndex === firstDocAfterWbIndex;
+
+            if (isMovingToFirstAfterWb) {
+                // D4 case: Move to first position after WB
+                return {
+                    actionType: needsMetadata ? 'physical+metadata' : 'physical',
+                    physicalMove: {
+                        type: 'move-document',
+                        fromDocIndex,
+                        toDocIndex: null,
+                        toAfterWorkbook: true, // Insert at wbEnd (first position after WB)
+                        toBeforeWorkbook: false
+                    },
+                    newTabOrder: needsMetadata ? ctx.newTabOrder : undefined,
+                    metadataRequired: needsMetadata
+                };
+            }
+
+            // D3 case: Move after another doc that is after WB
             return {
                 actionType: needsMetadata ? 'physical+metadata' : 'physical',
                 physicalMove: {
                     type: 'move-document',
                     fromDocIndex,
                     toDocIndex,
-                    toAfterWorkbook: false, // Don't use wbEnd, just append to EOF
+                    toAfterWorkbook: false, // Use toDocIndex for specific position
                     toBeforeWorkbook: false
                 },
                 newTabOrder: needsMetadata ? ctx.newTabOrder : undefined,
@@ -1384,7 +1414,16 @@ export function determineReorderAction(
                         type: t.type as 'sheet' | 'document',
                         index: t.type === 'sheet' ? t.sheetIndex! : t.docIndex!
                     }));
-                const needsMetadata = isMetadataRequired(newTabOrder, fileStructure);
+
+                // Compute POST-MOVE file structure for accurate isMetadataRequired check
+                // After move-workbook(after-doc, docIndex), docIndex becomes before-WB
+                const postMoveStructure: FileStructure = {
+                    docsBeforeWb: [docIndex], // targetDoc moves before WB
+                    sheets: fileStructure.sheets,
+                    docsAfterWb: fileStructure.docsAfterWb.filter((d) => d !== docIndex),
+                    hasWorkbook: true
+                };
+                const needsMetadata = isMetadataRequired(newTabOrder, postMoveStructure);
 
                 // CRITICAL: Only trigger H9 move-workbook if result DIFFERS from natural order
                 // If result matches natural order, skip H9 and let normal routing handle it

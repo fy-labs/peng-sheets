@@ -61,8 +61,6 @@ models = table.to_models(FeatureComparison)
 
 ## MyTestSheet
 
-### Table 1
-
 | 列名1 | 列名2 | 列名3 |
 | :---: | --- | --- |
 | a | 1 | 2 |
@@ -72,15 +70,11 @@ models = table.to_models(FeatureComparison)
 
 <!-- md-spreadsheet-table-metadata: {"filters": {"1": []}, "column_widths": {"1": 172, "2": 238}, "columns": {"0": {"format": null}, "1": {"format": {"numberFormat": {"type": "percent", "decimals": 0}}}, "2": {"format": {"numberFormat": {"type": "number", "decimals": 2}, "wordWrap": true}}}} -->
 
-### New Table 2
-
 | 列名1 | 列名2 | 列名3 |
 | --- | --- | --- |
 |  | aaaaa<br>aaaaa<br>aaaaa |  |
 
 <!-- md-spreadsheet-table-metadata: {"columns": {"1": {"width": 181}}} -->
-
-### New Table 3
 
 | 列名1 | 列名2 | 新しい列 | 列名3 |
 | --- | --- | --- | --- |
@@ -88,8 +82,6 @@ models = table.to_models(FeatureComparison)
 |  | a |  | a |
 
 <!-- md-spreadsheet-table-metadata: {"validation": {"1": {"type": "list", "values": ["Yes", "No"]}, "3": {"type": "date"}}} -->
-
-### テーブル 4
 
 | 列名1 | 列名2 | 列名3 |
 | ---: | --- | --- |
@@ -100,8 +92,6 @@ models = table.to_models(FeatureComparison)
 <!-- md-spreadsheet-sheet-metadata: {"layout": {"type": "split", "id": "VuoSt3UnGMVrGIVe_E-TL", "direction": "vertical", "sizes": [28.617419617419614, 71.38258038258039], "children": [{"type": "pane", "id": "root", "tables": [0, 1], "activeTableIndex": 1}, {"type": "split", "id": "HY2l0BqxRiRDXNbOTBiCc", "direction": "horizontal", "sizes": [39.764851524333295, 60.235148475666705], "children": [{"type": "pane", "id": "16WWCFS7JS3nD_iBtlzsO", "tables": [2], "activeTableIndex": 0}, {"type": "pane", "id": "mzStJk31RtqOOSBWqobDQ", "tables": [3], "activeTableIndex": 0}]}]}} -->
 
 ## Comparison
-
-### Excel vs MD Suite
 
 Markdown Spreadsheet Suite と一般的なスプレッドシート（Excel）の機能比較です。
 
@@ -116,10 +106,6 @@ Markdown Spreadsheet Suite と一般的なスプレッドシート（Excel）の
 | **Version Control** | Difficult (Binary) | Native (Git) | PRレビューが可能。コンフリクト解消も容易。 |
 
 <!-- md-spreadsheet-table-metadata: {"column_widths": {"2": 170, "3": 463}} -->
-
-### Keyboard Shortcuts
-
-Excelユーザーが直感的に操作できるキーボードショートカット一覧です。
 
 | Action | Windows/Linux | macOS | Context |
 | --- | --- | --- | --- |
@@ -136,8 +122,6 @@ Excelユーザーが直感的に操作できるキーボードショートカッ
 
 ## Project Status
 
-### Test Execution Report
-
 架空のテスト実行レポートデータです。条件付き書式や集計のテストに使用できます。
 
 | Module | Total Cases | Passed | Failed | Skipped | Coverage | Status |
@@ -150,10 +134,6 @@ Excelユーザーが直感的に操作できるキーボードショートカッ
 | **Undo/Redo System** | 40 | 40 | 0 | 0 | 95.0% | ✅ Stable |
 | **Performance (10k rows)** | 10 | 8 | 1 | 1 | - | ⚠️ Perf |
 
-### Resource Allocation
-
-プロジェクトメンバーの割り当て状況です。
-
 | Member | Role | Core Parsing | Webview UI | Testing | Load |
 | --- | --- | --- | --- | --- | --- |
 | **Alice** | Lead | 40% | 10% | 10% | 60% |
@@ -163,8 +143,6 @@ Excelユーザーが直感的に操作できるキーボードショートカッ
 | **Eve** | Design | 0% | 50% | 0% | 50% |
 
 ## Sales Data
-
-### Q1 Regional Sales
 
 データ型（日付、数値、通貨）のパーステスト用データです。
 
@@ -179,19 +157,12 @@ Excelユーザーが直感的に操作できるキーボードショートカッ
 
 <!-- md-spreadsheet-table-metadata: {"validation": {"0": {"type": "date"}}} -->
 
-### Q2 Forecast
-
-第2四半期の売上予測データです。
-
 | Month | Region | Growth Target | Expected Revenue | Risk Factor | Probability |
 | --- | --- | --- | --- | --- | --- |
 | **April** | Global | +5% | $15,000 | Low | 90% |
 | **May** | JP-Region | +10% | $8,000 | Medium | 70% |
 | **June** | US-Region | +8% | $12,000 | High | 50% |
 | **Total** | - | - | $35,000 | - | - |
-
-<!-- md-spreadsheet-workbook-metadata: {"tab_order": [{"type": "document", "index": 0}, {"type": "sheet", "index": 0}, {"type": "sheet", "index": 1}, {"type": "document", "index": 1}, {"type": "sheet", "index": 2}, {"type": "sheet", "index": 3}]} -->
-<!-- md-spreadsheet-workbook-metadata: {"tab_order": [{"type": "document", "index": 0}, {"type": "sheet", "index": 0}, {"type": "sheet", "index": 1}, {"type": "document", "index": 1}, {"type": "sheet", "index": 2}, {"type": "sheet", "index": 3}]} -->
 
 # Appendix
 
@@ -201,3 +172,5 @@ Excelユーザーが直感的に操作できるキーボードショートカッ
 - **Sheet**: A tab within a Workbook, defined by a second-level header.
 - **Table**: A Markdown grid within a Sheet.
 - **Hybrid Notebook**: A file containing both standard documentation and spreadsheet data.
+
+## Test

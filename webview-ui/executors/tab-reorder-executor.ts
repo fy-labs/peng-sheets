@@ -162,7 +162,7 @@ class TabReorderExecutorClass {
                 callbacks.postBatchUpdate({
                     content: mergedContent.content,
                     startLine: 0,
-                    endLine: mergedContent.originalLineCount
+                    endLine: mergedContent.originalLineCount - 1
                 });
             } else {
                 callbacks.postBatchUpdate(moveResult);
@@ -195,7 +195,7 @@ class TabReorderExecutorClass {
                 callbacks.postBatchUpdate({
                     content: mergedContent.content,
                     startLine: 0,
-                    endLine: mergedContent.originalLineCount
+                    endLine: mergedContent.originalLineCount - 1
                 });
             } else {
                 callbacks.postBatchUpdate(moveResult);
@@ -225,7 +225,7 @@ class TabReorderExecutorClass {
                 callbacks.postBatchUpdate({
                     content: mergedContent.content,
                     startLine: 0,
-                    endLine: mergedContent.originalLineCount
+                    endLine: mergedContent.originalLineCount - 1
                 });
             } else {
                 callbacks.postBatchUpdate(moveResult);

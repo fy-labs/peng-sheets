@@ -111,7 +111,9 @@ export class EditorContext {
         let structure: StructureSection[] | null = null;
 
         if (this.state.schema) {
-            const rootMarker = this.state.schema.rootMarker ?? '# Tables';
+            // When rootMarker is undefined (auto-detection), use workbook.name
+            // Parser sets workbook.name from the detected root section (e.g., "Tables")
+            const rootMarker = this.state.schema.rootMarker ?? `# ${this.state.workbook.name}`;
             const sheetHeaderLevel = this.state.schema.sheetHeaderLevel ?? 2;
 
             // Augment workbook with line numbers
@@ -146,10 +148,19 @@ export class EditorContext {
 
         const configDict: EditorConfig = configJson ? JSON.parse(configJson) : {};
 
+        // Default header levels for generator:
+        // - sheetHeaderLevel defaults to 2 (## Sheet)
+        // - tableHeaderLevel defaults to sheetLevel + 1 (### Table)
+        // Without these, toMarkdown() omits table name headers for auto-detected workbooks.
+        const sheetLevel = configDict.sheetHeaderLevel ?? 2;
+        const tableLevel = configDict.tableHeaderLevel ?? sheetLevel + 1;
+
         this.state.schema = new MultiTableParsingSchema({
-            rootMarker: configDict.rootMarker ?? '# Tables',
-            sheetHeaderLevel: configDict.sheetHeaderLevel ?? 2,
-            tableHeaderLevel: configDict.tableHeaderLevel ?? 3,
+            // Only override rootMarker if user explicitly configured it
+            // Parser defaults to '# Tables' which also works
+            rootMarker: configDict.rootMarker,
+            sheetHeaderLevel: sheetLevel,
+            tableHeaderLevel: tableLevel,
             captureDescription: configDict.captureDescription ?? true,
             columnSeparator: configDict.columnSeparator ?? '|',
             headerSeparatorChar: configDict.headerSeparatorChar ?? '-',
@@ -159,10 +170,29 @@ export class EditorContext {
 
         let workbook = parseWorkbook(this.state.mdText, this.state.schema);
 
+        // Update schema with parser-detected rootMarker so toMarkdown
+        // generates the correct workbook header (e.g., "# Doc" not "# Workbook")
+        if (!configDict.rootMarker && workbook.name) {
+            this.state.schema = new MultiTableParsingSchema({
+                ...this.state.schema,
+                rootMarker: `# ${workbook.name}`
+            });
+        }
+
         // Initialize tab_order if not present in metadata
         if (!workbook.metadata?.tab_order) {
             const numSheets = (workbook.sheets ?? []).length;
-            const tabOrder = initializeTabOrderFromStructure(mdText, configJson, numSheets);
+
+            // Use the Parser-detected workbook name for rootMarker
+            // This ensures tab_order reflects the actual file structure
+            let effectiveConfig = configJson;
+            if (workbook.name) {
+                const configWithRootMarker = configJson ? JSON.parse(configJson) : {};
+                configWithRootMarker.rootMarker = `# ${workbook.name}`;
+                effectiveConfig = JSON.stringify(configWithRootMarker);
+            }
+
+            const tabOrder = initializeTabOrderFromStructure(mdText, effectiveConfig, numSheets);
 
             const metadata = { ...(workbook.metadata || {}), tab_order: tabOrder };
             workbook = new Workbook({ ...workbook, metadata });

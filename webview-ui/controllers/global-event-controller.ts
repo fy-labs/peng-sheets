@@ -62,6 +62,7 @@ export interface GlobalEventHost extends ReactiveControllerHost {
     _handlePasteCells(detail: IPasteCellsDetail): void;
     _handlePostMessage(detail: PostMessageCommand): void;
     _handleDocumentChange(detail: { sectionIndex: number; content: string; title?: string; save?: boolean }): void;
+    _handleDocSheetChange(detail: { sheetIndex: number; content: string; title?: string; save?: boolean }): void;
     _handleSave(): void;
     _handleValidationUpdate(detail: IValidationUpdateDetail): void;
     _handleFormulaUpdate(detail: IFormulaUpdateDetail): void;
@@ -114,6 +115,7 @@ export class GlobalEventController implements ReactiveController {
     private _boundPasteCells: (e: Event) => void;
     private _boundPostMessage: (e: Event) => void;
     private _boundDocumentChange: (e: Event) => void;
+    private _boundDocSheetChange: (e: Event) => void;
     private _boundValidationUpdate: (e: Event) => void;
     private _boundMoveRows: (e: Event) => void;
     private _boundMoveColumns: (e: Event) => void;
@@ -150,6 +152,7 @@ export class GlobalEventController implements ReactiveController {
         this._boundPasteCells = this._handlePasteCells.bind(this);
         this._boundPostMessage = this._handlePostMessage.bind(this);
         this._boundDocumentChange = this._handleDocumentChange.bind(this);
+        this._boundDocSheetChange = this._handleDocSheetChange.bind(this);
         this._boundValidationUpdate = this._handleValidationUpdate.bind(this);
         this._boundMoveRows = this._handleMoveRows.bind(this);
         this._boundMoveColumns = this._handleMoveColumns.bind(this);
@@ -198,6 +201,7 @@ export class GlobalEventController implements ReactiveController {
         window.addEventListener('paste-cells', this._boundPasteCells);
         window.addEventListener('post-message', this._boundPostMessage);
         window.addEventListener('document-change', this._boundDocumentChange);
+        window.addEventListener('doc-sheet-change', this._boundDocSheetChange);
         window.addEventListener('validation-update', this._boundValidationUpdate);
         window.addEventListener('formula-update', this._boundFormulaUpdate);
 
@@ -241,6 +245,7 @@ export class GlobalEventController implements ReactiveController {
         window.removeEventListener('paste-cells', this._boundPasteCells);
         window.removeEventListener('post-message', this._boundPostMessage);
         window.removeEventListener('document-change', this._boundDocumentChange);
+        window.removeEventListener('doc-sheet-change', this._boundDocSheetChange);
         window.removeEventListener('validation-update', this._boundValidationUpdate);
         window.removeEventListener('formula-update', this._boundFormulaUpdate);
         window.removeEventListener('move-rows', this._boundMoveRows);
@@ -405,6 +410,19 @@ export class GlobalEventController implements ReactiveController {
             (
                 e as CustomEvent<{
                     sectionIndex: number;
+                    content: string;
+                    title?: string;
+                    save?: boolean;
+                }>
+            ).detail
+        );
+    }
+
+    private _handleDocSheetChange(e: Event): void {
+        this.host._handleDocSheetChange(
+            (
+                e as CustomEvent<{
+                    sheetIndex: number;
                     content: string;
                     title?: string;
                     save?: boolean;

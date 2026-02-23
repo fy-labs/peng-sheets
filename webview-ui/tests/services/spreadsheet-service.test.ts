@@ -38,7 +38,7 @@ describe('SpreadsheetService (TypeScript)', () => {
 | Apple | 100 |
 | Banana | 200 |
 `;
-        editor.initializeWorkbook(sampleMd, '');
+        editor.initializeWorkbook(sampleMd, JSON.stringify({ rootMarker: '# Tables' }));
 
         service = new SpreadsheetService(mockVscode);
         await service.initialize();
@@ -161,7 +161,7 @@ describe('SpreadsheetService (TypeScript)', () => {
 | - | - |
 | 1 | 2 |
 `;
-            const state = await service.initializeWorkbook(sampleMd, {});
+            const state = await service.initializeWorkbook(sampleMd, { rootMarker: '# Tables' });
 
             expect(state).toBeDefined();
             expect(state.workbook).toBeDefined();
@@ -179,7 +179,7 @@ describe('SpreadsheetService (TypeScript)', () => {
 | - | - |
 | 1 | 2 |
 `;
-            const state = await service.initializeWorkbook(sampleMd, {});
+            const state = await service.initializeWorkbook(sampleMd, { rootMarker: '# Tables' });
 
             expect(state.structure).toBeDefined();
         });

@@ -60,7 +60,7 @@ describe('SpreadsheetDocumentView save functionality', () => {
         expect(eventSpy).toHaveBeenCalled();
         // Event includes both content (body) and title
         expect(eventSpy.mock.calls[0][0].detail.sectionIndex).toEqual(0);
-        expect(eventSpy.mock.calls[0][0].detail.content).toEqual('\nNew text');
+        expect(eventSpy.mock.calls[0][0].detail.content).toEqual('New text');
         expect(eventSpy.mock.calls[0][0].detail.title).toEqual('Modified Content');
     });
 

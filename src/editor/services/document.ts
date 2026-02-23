@@ -7,7 +7,32 @@
 import { Workbook } from 'md-spreadsheet-parser';
 import type { EditorContext } from '../context';
 import type { UpdateResult, EditorConfig, TabOrderItem } from '../types';
-import { generateAndGetRange, getWorkbookRange, initializeTabOrderFromStructure } from './workbook';
+import {
+    generateAndGetRange,
+    getWorkbookRange,
+    initializeTabOrderFromStructure,
+    isTabOrderRedundant
+} from './workbook';
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+/**
+ * Get workbook range from context, using parser-detected values when available.
+ * Falls back to getWorkbookRange for dynamic/modified text.
+ */
+function getWorkbookRangeFromContext(context: EditorContext): [number, number] {
+    const configDict: EditorConfig = context.config ? JSON.parse(context.config) : {};
+    const wbName = context.workbook?.name;
+    const rootMarker = wbName ? `# ${wbName}` : (configDict.rootMarker ?? '# Workbook');
+    const sheetHeaderLevel = configDict.sheetHeaderLevel ?? 2;
+
+    if (context.workbook?.startLine !== undefined && context.workbook?.endLine !== undefined) {
+        return [context.workbook.startLine, context.workbook.endLine];
+    }
+    return getWorkbookRange(context.mdText, rootMarker, sheetHeaderLevel);
+}
 
 // =============================================================================
 // Document Section Range
@@ -22,7 +47,9 @@ export function getDocumentSectionRange(
 ): { startLine: number; endLine: number } | { error: string } {
     const mdText = context.mdText;
     const configDict: EditorConfig = context.config ? JSON.parse(context.config) : {};
-    const rootMarker = configDict.rootMarker ?? '# Tables';
+    // workbook.name is just the name without the # prefix, so we need to add it
+    const wbName = context.workbook?.name;
+    const rootMarker = wbName ? `# ${wbName}` : (configDict.rootMarker ?? '# Workbook');
 
     const lines = mdText.split('\n');
     let docIdx = 0;
@@ -79,7 +106,8 @@ export function addDocument(
 ): UpdateResult {
     const mdText = context.mdText;
     const configDict: EditorConfig = context.config ? JSON.parse(context.config) : {};
-    const rootMarker = configDict.rootMarker ?? '# Tables';
+    const wbName = context.workbook?.name;
+    const rootMarker = wbName ? `# ${wbName}` : (configDict.rootMarker ?? '# Workbook');
 
     const lines = mdText.split('\n');
     // Python uses insertLine = 0 by default (insert at beginning)
@@ -89,55 +117,68 @@ export function addDocument(
 
     let inCodeBlock = false;
 
-    // Parse the structure to find insertion point
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (line.trim().startsWith('```')) {
-            inCodeBlock = !inCodeBlock;
-        }
+    // If afterWorkbook is true, always insert after the workbook section
+    // afterDocIndex is then interpreted relative to documents AFTER workbook
+    if (afterWorkbook) {
+        const [, wbEnd] = getWorkbookRangeFromContext(context);
+        insertLine = wbEnd;
+        // No need to search for document positions - insert at workbook end
+    } else {
+        // Parse the structure to find insertion point
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (line.trim().startsWith('```')) {
+                inCodeBlock = !inCodeBlock;
+            }
 
-        if (!inCodeBlock && line.startsWith('# ') && !line.startsWith('## ')) {
-            const stripped = line.trim();
-            if (stripped === rootMarker) {
-                if (afterWorkbook && afterDocIndex < 0) {
-                    // Insert right after workbook (before any docs after WB)
-                    // Used for between-sheets insertion per SPECS.md 8.5
-                    const [, wbEnd] = getWorkbookRange(mdText, rootMarker, configDict.sheetHeaderLevel ?? 2);
-                    insertLine = wbEnd;
+            if (!inCodeBlock && line.startsWith('# ') && !line.startsWith('## ')) {
+                const stripped = line.trim();
+                if (stripped === rootMarker) {
+                    // Workbook found - skip it (not inserting after workbook)
+                    continue;
+                }
+
+                // Document found
+                if (afterDocIndex >= 0 && docCount === afterDocIndex) {
+                    // Find end of this document
+                    let nextI = i + 1;
+                    while (nextI < lines.length) {
+                        const nextLine = lines[nextI];
+                        if (nextLine.trim().startsWith('```')) {
+                            inCodeBlock = !inCodeBlock;
+                        }
+                        if (!inCodeBlock && nextLine.startsWith('# ') && !nextLine.startsWith('## ')) {
+                            break;
+                        }
+                        nextI++;
+                    }
+                    insertLine = nextI;
                     break;
                 }
-                // Either not afterWorkbook, or we have a specific afterDocIndex to find
-                continue;
+                docCount++;
             }
-
-            // Document found
-            if (afterDocIndex >= 0 && docCount === afterDocIndex) {
-                // Find end of this document
-                let nextI = i + 1;
-                while (nextI < lines.length) {
-                    const nextLine = lines[nextI];
-                    if (nextLine.trim().startsWith('```')) {
-                        inCodeBlock = !inCodeBlock;
-                    }
-                    if (!inCodeBlock && nextLine.startsWith('# ') && !nextLine.startsWith('## ')) {
-                        break;
-                    }
-                    nextI++;
-                }
-                insertLine = nextI;
-                break;
-            }
-            docCount++;
         }
     }
 
     // Create the new document content
-    const newDocContent = `\n# ${title}\n\n`;
-
-    // Build new text
+    // - If inserting at beginning (insertLine=0), no leading newlines needed
+    // - Otherwise, ensure blank line before header (two newlines: one to end previous line, one blank line)
     const beforeLines = lines.slice(0, insertLine);
     const afterLines = lines.slice(insertLine);
 
+    let newDocContent: string;
+    if (insertLine === 0) {
+        // At beginning - just the document header with trailing blank line
+        newDocContent = `# ${title}\n\n`;
+    } else {
+        // Check if the previous line ends properly
+        const lastLine = beforeLines[beforeLines.length - 1];
+        const needsExtraNewline = lastLine.trim() !== '';
+        // Ensure blank line before header
+        newDocContent = needsExtraNewline ? `\n\n# ${title}\n\n` : `\n# ${title}\n\n`;
+    }
+
+    // Build new text
     const newMdText = beforeLines.join('\n') + newDocContent + afterLines.join('\n');
     context.mdText = newMdText;
 
@@ -190,6 +231,12 @@ export function addDocument(
         }
 
         metadata.tab_order = tabOrder;
+
+        // Cleanup redundant tab_order
+        if (isTabOrderRedundant(tabOrder, (workbook.sheets ?? []).length)) {
+            delete metadata.tab_order;
+        }
+
         const newWorkbook = new Workbook({ ...workbook, metadata });
         context.updateWorkbook(newWorkbook);
     }
@@ -221,6 +268,49 @@ export function renameDocument(context: EditorContext, docIndex: number, newTitl
     // Replace the header line
     lines[startLine] = `# ${newTitle}`;
     const newMdText = lines.join('\n');
+    context.mdText = newMdText;
+
+    return {
+        content: newMdText,
+        startLine: 0,
+        endLine: lines.length - 1,
+        file_changed: true
+    };
+}
+
+// =============================================================================
+// Update Document Content
+// =============================================================================
+
+/**
+ * Update document section content (title and body).
+ * This is the unified function for document saving, similar to updateDocSheetContent.
+ */
+export function updateDocumentContent(
+    context: EditorContext,
+    docIndex: number,
+    title: string,
+    content: string
+): UpdateResult {
+    const rangeResult = getDocumentSectionRange(context, docIndex);
+    if ('error' in rangeResult) {
+        return { error: rangeResult.error };
+    }
+
+    const { startLine, endLine } = rangeResult;
+    const lines = context.mdText.split('\n');
+
+    // Build new document content: header + blank line + body + trailing newline
+    const header = `# ${title}`;
+    const body = content.endsWith('\n') ? content : content + '\n';
+    const newDocContent = header + '\n\n' + body;
+    const newDocLines = newDocContent.split('\n');
+
+    // Replace the document section
+    const beforeLines = lines.slice(0, startLine);
+    const afterLines = lines.slice(endLine);
+    const newLines = [...beforeLines, ...newDocLines, ...afterLines];
+    const newMdText = newLines.join('\n');
     context.mdText = newMdText;
 
     return {
@@ -350,6 +440,10 @@ export function addDocumentAndGetFullUpdate(
     afterWorkbook = false,
     insertAfterTabOrderIndex = -1
 ): UpdateResult {
+    // Capture original line count BEFORE modifying context
+    // This represents what VS Code currently has - needed for accurate replace range
+    const originalLineCount = context.mdText.split('\n').length;
+
     // 1. Add the document (updates md_text in context)
     const addResult = addDocument(context, title, afterDocIndex, afterWorkbook, insertAfterTabOrderIndex);
     if (addResult.error) {
@@ -359,7 +453,6 @@ export function addDocumentAndGetFullUpdate(
     // 2. Get current md_text from context
     let currentMd = context.mdText;
     let lines = currentMd.split('\n');
-    const originalLineCount = lines.length;
 
     // 3. Regenerate workbook content
     const wbUpdate = generateAndGetRange(context);
@@ -383,11 +476,12 @@ export function addDocumentAndGetFullUpdate(
     const fullStateJson = context.getFullStateDict();
     const fullState = JSON.parse(fullStateJson);
 
+    // Use originalLineCount (captured before modification) as endLine
+    // This represents VS Code's current document range that we're replacing
     return {
         content: currentMd,
         startLine: 0,
         endLine: originalLineCount - 1,
-        endCol: 0,
         workbook: fullState.workbook,
         structure: fullState.structure,
         file_changed: true
@@ -410,6 +504,10 @@ export function moveDocumentSection(
     toAfterWorkbook = false,
     toBeforeWorkbook = false
 ): UpdateResult {
+    // Capture original line count BEFORE modifying context
+    // This represents what VS Code currently has - needed for accurate replace range
+    const originalLineCount = context.mdText.split('\n').length;
+
     // Get the document section to move
     const rangeResult = getDocumentSectionRange(context, fromDocIndex);
     if ('error' in rangeResult) {
@@ -427,7 +525,8 @@ export function moveDocumentSection(
     linesWithoutDoc.splice(startLine, endLine - startLine);
 
     const configDict: EditorConfig = context.config ? JSON.parse(context.config) : {};
-    const rootMarker = configDict.rootMarker ?? '# Tables';
+    const wbName = context.workbook?.name;
+    const rootMarker = wbName ? `# ${wbName}` : (configDict.rootMarker ?? '# Workbook');
     const sheetHeaderLevel = configDict.sheetHeaderLevel ?? 2;
 
     // Calculate new insertion point
@@ -478,32 +577,78 @@ export function moveDocumentSection(
             insertLine = wbStart;
         }
     } else if (toDocIndex !== null) {
+        // toDocIndex semantics: insert at position toDocIndex
+        // This means: insert AFTER the document at position (toDocIndex - 1)
+        // When toDocIndex=0, insert at beginning
+        // When toDocIndex=numDocs, insert at end
+
         // Adjust toDocIndex for the case where source doc was before target
         // Since we removed fromDocIndex first, indices shift down
         const adjustedToDocIndex = fromDocIndex < toDocIndex ? toDocIndex - 1 : toDocIndex;
 
-        // Find the target document position
+        // Find the target insert position
         let docIdx = 0;
         let targetLine = linesWithoutDoc.length;
         let inCodeBlock = false;
         let foundTarget = false;
 
-        for (let i = 0; i < linesWithoutDoc.length; i++) {
-            const line = linesWithoutDoc[i];
-            if (line.trim().startsWith('```')) {
-                inCodeBlock = !inCodeBlock;
-            }
+        // If adjustedToDocIndex is 0, insert at first doc position
+        // This needs to respect the doc zone (before or after WB)
+        if (adjustedToDocIndex === 0) {
+            // For WB-after-docs case: first doc position is at beginning
+            // For WB-before-docs case: first doc position is after WB
+            // We need to decide based on where the from-doc was originally
+            const tempText = linesWithoutDoc.join('\n');
+            const [wbStart, wbEnd] = getWorkbookRange(tempText, rootMarker, sheetHeaderLevel);
+            const originalText = context.mdText;
+            const [originalWbStart] = getWorkbookRange(originalText, rootMarker, sheetHeaderLevel);
+            const fromDocWasBeforeWb = startLine < originalWbStart;
 
-            if (!inCodeBlock && line.startsWith('# ') && !line.startsWith('## ')) {
-                const stripped = line.trim();
-                if (stripped !== rootMarker) {
-                    if (docIdx === adjustedToDocIndex) {
-                        // Insert BEFORE this document (at its start line)
-                        targetLine = i;
-                        foundTarget = true;
-                        break;
+            if (fromDocWasBeforeWb) {
+                // Doc was before WB - insert at file beginning
+                targetLine = 0;
+            } else if (wbStart < linesWithoutDoc.length) {
+                // Doc was after WB (or WB exists and we need to respect zones)
+                // Insert at beginning of after-WB zone = after WB
+                targetLine = wbEnd;
+            } else {
+                // No WB, insert at beginning
+                targetLine = 0;
+            }
+            foundTarget = true;
+        } else {
+            // Find the document at position (adjustedToDocIndex - 1) and get its END
+            const targetDocIdx = adjustedToDocIndex - 1;
+
+            for (let i = 0; i < linesWithoutDoc.length; i++) {
+                const line = linesWithoutDoc[i];
+                if (line.trim().startsWith('```')) {
+                    inCodeBlock = !inCodeBlock;
+                }
+
+                if (!inCodeBlock && line.startsWith('# ') && !line.startsWith('## ')) {
+                    const stripped = line.trim();
+                    if (stripped !== rootMarker) {
+                        if (docIdx === targetDocIdx) {
+                            // Found the target doc - now find its END (next H1 or EOF)
+                            let endLine = linesWithoutDoc.length;
+                            let endCodeBlock = false;
+                            for (let j = i + 1; j < linesWithoutDoc.length; j++) {
+                                const nextLine = linesWithoutDoc[j];
+                                if (nextLine.trim().startsWith('```')) {
+                                    endCodeBlock = !endCodeBlock;
+                                }
+                                if (!endCodeBlock && nextLine.startsWith('# ') && !nextLine.startsWith('## ')) {
+                                    endLine = j;
+                                    break;
+                                }
+                            }
+                            targetLine = endLine;
+                            foundTarget = true;
+                            break;
+                        }
+                        docIdx++;
                     }
-                    docIdx++;
                 }
             }
         }
@@ -551,15 +696,59 @@ export function moveDocumentSection(
         insertLine = linesWithoutDoc.length;
     }
 
-    // Insert at new position
-    linesWithoutDoc.splice(insertLine, 0, ...docContent);
+    // Ensure proper blank line separation when inserting
+    // 1. If inserting at beginning, ensure blank line after document
+    // 2. If inserting in middle, ensure blank line before and after
+    // 3. If inserting at end, ensure blank line before
+
+    // First, normalize docContent to have exactly one trailing blank line
+    // Strip any leading/trailing blank lines from docContent for normalization
+    const normalizedContent = [...docContent];
+
+    // Remove trailing blank lines from docContent
+    while (normalizedContent.length > 0 && normalizedContent[normalizedContent.length - 1].trim() === '') {
+        normalizedContent.pop();
+    }
+
+    // Remove leading blank lines from docContent
+    while (normalizedContent.length > 0 && normalizedContent[0].trim() === '') {
+        normalizedContent.shift();
+    }
+
+    // Now insert with proper separation
+    if (insertLine === 0) {
+        // Inserting at beginning - add blank line after
+        linesWithoutDoc.splice(insertLine, 0, ...normalizedContent, '');
+    } else if (insertLine >= linesWithoutDoc.length) {
+        // Inserting at end - ensure blank line before if previous line is not blank
+        if (linesWithoutDoc.length > 0 && linesWithoutDoc[linesWithoutDoc.length - 1].trim() !== '') {
+            linesWithoutDoc.push('');
+        }
+        linesWithoutDoc.push(...normalizedContent);
+    } else {
+        // Inserting in middle - ensure blank lines before and after
+        const prevLine = linesWithoutDoc[insertLine - 1];
+        const needsBlankBefore = prevLine.trim() !== '';
+        const nextLine = linesWithoutDoc[insertLine];
+        const needsBlankAfter = nextLine.trim() !== '' && !nextLine.startsWith('#');
+
+        const contentToInsert = [...normalizedContent];
+        if (needsBlankAfter) {
+            contentToInsert.push('');
+        }
+        if (needsBlankBefore) {
+            contentToInsert.unshift('');
+        }
+        linesWithoutDoc.splice(insertLine, 0, ...contentToInsert);
+    }
+
     const newMdText = linesWithoutDoc.join('\n');
     context.mdText = newMdText;
 
     return {
         content: context.mdText,
         startLine: 0,
-        endLine: lines.length,
+        endLine: originalLineCount - 1,
         file_changed: true
     };
 }
@@ -577,17 +766,18 @@ export function moveWorkbookSection(
     toDocIndex: number | null = null,
     toAfterDoc = false,
     toBeforeDoc = false,
-    targetTabOrderIndex: number | null = null
+    _targetTabOrderIndex: number | null = null
 ): UpdateResult {
     const configDict: EditorConfig = context.config ? JSON.parse(context.config) : {};
-    const rootMarker = configDict.rootMarker ?? '# Tables';
-    const sheetHeaderLevel = configDict.sheetHeaderLevel ?? 2;
+    const wbName = context.workbook?.name;
+    const rootMarker = wbName ? `# ${wbName}` : (configDict.rootMarker ?? '# Workbook');
+    const _sheetHeaderLevel = configDict.sheetHeaderLevel ?? 2;
 
     const mdText = context.mdText;
     const lines = mdText.split('\n');
 
-    // Find workbook range
-    const [wbStart, wbEnd] = getWorkbookRange(mdText, rootMarker, sheetHeaderLevel);
+    // Find workbook range - use parser-detected range if available
+    const [wbStart, wbEnd] = getWorkbookRangeFromContext(context);
 
     if (wbStart >= lines.length) {
         return { error: 'No workbook section found' };
@@ -673,23 +863,30 @@ export function moveWorkbookSection(
     const newMdText = linesWithoutWb.join('\n');
     context.mdText = newMdText;
 
-    // Update workbook reference
-    // IMPORTANT: Preserve existing tab_order if it was pre-set by updateWorkbookTabOrder
-    // Only initialize from structure if tab_order is missing
-    if (context.workbook && targetTabOrderIndex !== null) {
+    // Only initialize from structure if tab_order is missing AND was not explicitly removed
+    if (context.workbook && _targetTabOrderIndex !== null) {
         const existingTabOrder = context.workbook.metadata?.tab_order;
 
         if (!existingTabOrder || (Array.isArray(existingTabOrder) && existingTabOrder.length === 0)) {
-            // No existing tab_order, initialize from structure
-            const metadata = { ...(context.workbook.metadata || {}) };
-            const tabOrder = initializeTabOrderFromStructure(
-                newMdText,
-                context.config,
-                (context.workbook.sheets ?? []).length
-            );
-            metadata.tab_order = tabOrder;
-            const newWorkbook = new Workbook({ ...context.workbook, metadata });
-            context.updateWorkbook(newWorkbook);
+            // Check if tab_order was explicitly removed by updateWorkbookTabOrder(null)
+            // If metadata is undefined or empty object, it was explicitly cleared - don't reinit
+            // (metadata becomes undefined when tab_order was the only property and was deleted)
+            const metadataWasCleared =
+                !context.workbook.metadata || Object.keys(context.workbook.metadata).length === 0;
+
+            if (!metadataWasCleared) {
+                // Metadata exists with other properties but no tab_order - initialize from structure
+                const metadata = { ...(context.workbook.metadata || {}) };
+                const tabOrder = initializeTabOrderFromStructure(
+                    newMdText,
+                    context.config,
+                    (context.workbook.sheets ?? []).length
+                );
+                metadata.tab_order = tabOrder;
+                const newWorkbook = new Workbook({ ...context.workbook, metadata });
+                context.updateWorkbook(newWorkbook);
+            }
+            // If metadataWasCleared, respect the explicit deletion by updateWorkbookTabOrder(null)
         }
         // If tab_order already exists (pre-set by caller), keep it as-is
     }

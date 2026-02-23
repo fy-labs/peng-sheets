@@ -51,11 +51,33 @@ export interface TabData {
     metadata?: SheetMetadata;
 }
 
+export type SheetType = 'table' | 'doc';
+
 export interface SheetJSON {
     name: string;
     header_line?: number;
     tables: TableJSON[];
+    // WASM parser may return either camelCase or snake_case depending on version
+    type?: SheetType;
+    sheetType?: string; // camelCase from newer parser
+    sheet_type?: string; // snake_case from WASM bridge
+    content?: string | null;
     metadata?: Record<string, unknown>;
+}
+
+/**
+ * Check if a SheetJSON represents a Doc Sheet (type='doc')
+ * Handles both camelCase and snake_case field names from WASM parser
+ */
+export function isDocSheetType(sheet: SheetJSON): boolean {
+    return sheet.type === 'doc' || sheet.sheetType === 'doc' || sheet.sheet_type === 'doc';
+}
+
+/**
+ * Get the content from a SheetJSON, handling both field naming conventions
+ */
+export function getSheetContent(sheet: SheetJSON): string {
+    return sheet.content ?? '';
 }
 
 export interface DocumentJSON {
@@ -65,15 +87,17 @@ export interface DocumentJSON {
 }
 
 export interface WorkbookJSON {
+    name: string;
     sheets: SheetJSON[];
     metadata?: {
         tab_order?: Array<{ type: string; index: number }>;
         [key: string]: unknown;
     };
+    rootContent?: string;
 }
 
 export interface TabDefinition {
-    type: 'sheet' | 'document' | 'onboarding' | 'add-sheet';
+    type: 'sheet' | 'document' | 'root' | 'onboarding' | 'add-sheet';
     title: string;
     index: number;
     sheetIndex?: number;

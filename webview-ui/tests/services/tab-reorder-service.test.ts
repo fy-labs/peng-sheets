@@ -111,8 +111,10 @@ describe('SPECS.md 8.6.1 Sheet → Sheet (Within Workbook)', () => {
 
     // ...
 
-    // H9 triggers: D1 becomes visually first, requires move-workbook + metadata
-    it('S1 after D1 in [S1, D1, S2] - H9 triggers physical+metadata', () => {
+    // H9 triggers: D1 becomes visually first, requires move-workbook
+    // But after WB moves to after D1, the result [D1, S1, S2] matches natural order
+    // So metadataRequired should be FALSE (natural order restoration case)
+    it('S1 after D1 in [S1, D1, S2] - H9 triggers move-workbook, natural order result', () => {
         const tabs: TestTab[] = [
             { type: 'sheet', sheetIndex: 0 }, // S1 at tab 0
             { type: 'document', docIndex: 0 }, // D1 at tab 1 (between sheets via metadata)
@@ -123,11 +125,13 @@ describe('SPECS.md 8.6.1 Sheet → Sheet (Within Workbook)', () => {
         // Drag S1 (tabIndex 0) to after D1 (tabIndex 2)
         const action = determineReorderAction(tabs, 0, 2);
 
-        // H9: D1 becomes visually first, requires move-workbook + metadata
-        // Result: [D1, S1, S2] with physical [D1, WB(S1,S2)]
-        expect(action.actionType).toBe('physical+metadata');
+        // H9: D1 becomes visually first, requires move-workbook
+        // After move: Physical [D1, WB(S1,S2)], Display [D1, S1, S2]
+        // Natural order from new physical: [D1, S1, S2] = Display order
+        // Therefore metadataRequired = false (natural order restoration)
+        expect(action.actionType).toBe('physical');
         expect(action.physicalMove?.type).toBe('move-workbook');
-        expect(action.metadataRequired).toBe(true);
+        expect(action.metadataRequired).toBe(false);
     });
 
     // ...

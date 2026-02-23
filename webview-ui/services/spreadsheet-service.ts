@@ -15,6 +15,7 @@ import * as editor from '../../src/editor';
 export class SpreadsheetService {
     private _initialized: boolean = false;
     private _isBatching: boolean = false;
+    private _batchDepth: number = 0; // Support nested batch calls
     private _batchFirstUpdate: boolean = true;
     private _batchUpdates: IUpdateSpec[] = [];
     private _pendingUpdateSpec: IUpdateSpec | null = null;
@@ -190,15 +191,25 @@ export class SpreadsheetService {
     }
 
     public startBatch() {
-        this._isBatching = true;
-        this._batchFirstUpdate = true;
-        this._batchUpdates = [];
-        this._pendingUpdateSpec = null;
-        // Apply any deferred metadata updates (e.g., tab switches) at batch start
-        this._applyDeferredUpdates();
+        this._batchDepth++;
+        // Only initialize on outermost batch start
+        if (this._batchDepth === 1) {
+            this._isBatching = true;
+            this._batchFirstUpdate = true;
+            this._batchUpdates = [];
+            this._pendingUpdateSpec = null;
+            // Apply any deferred metadata updates (e.g., tab switches) at batch start
+            this._applyDeferredUpdates();
+        }
     }
 
     public endBatch() {
+        this._batchDepth--;
+        // Only finalize on outermost batch end
+        if (this._batchDepth > 0) {
+            return; // Still in a nested batch
+        }
+
         this._isBatching = false;
         const updates = this._batchUpdates;
         this._batchUpdates = [];
@@ -304,6 +315,39 @@ export class SpreadsheetService {
 
     public updateSheetMetadata(sheetIdx: number, metadata: Record<string, unknown>) {
         this._performAction(() => editor.updateSheetMetadata(sheetIdx, metadata));
+    }
+
+    public updateSheetName(sheetIdx: number, newName: string) {
+        this._performAction(() => editor.updateSheetName(sheetIdx, newName));
+    }
+
+    public updateDocSheetContent(sheetIdx: number, content: string) {
+        this._performAction(() => editor.updateDocSheetContent(sheetIdx, content));
+    }
+
+    public updateDocumentContent(docIndex: number, title: string, content: string) {
+        this._performAction(() => editor.updateDocumentContent(docIndex, title, content));
+    }
+
+    public updateRootContent(content: string) {
+        this._performAction(() => editor.updateRootContent(content));
+    }
+
+    public deleteRootContent() {
+        this._performAction(() => editor.deleteRootContent());
+    }
+
+    public renameWorkbook(newName: string) {
+        this._performAction(() => editor.renameWorkbook(newName));
+    }
+
+    public addDocSheet(
+        sheetName: string,
+        content: string = '',
+        afterSheetIndex: number | null = null,
+        targetTabOrderIndex: number | null = null
+    ) {
+        this._performAction(() => editor.addDocSheet(sheetName, content, afterSheetIndex, targetTabOrderIndex));
     }
 
     public addTable(sheetIdx: number, tableName: string) {
@@ -498,9 +542,10 @@ export class SpreadsheetService {
         this._performAction(() => editor.addSheet(newSheetName, headers, tableName, afterIdx, targetIdx));
     }
 
-    public createSpreadsheet() {
+    public createSpreadsheet(sheetName?: string) {
         const headers = this._getDefaultColumnHeaders();
-        this._performAction(() => editor.createNewSpreadsheet(headers));
+        const tableName = this._getDefaultTableName();
+        this._performAction(() => editor.createNewSpreadsheet(headers, sheetName ?? '', tableName));
     }
 
     public renameSheet(sheetIdx: number, newName: string) {
@@ -518,6 +563,10 @@ export class SpreadsheetService {
 
     public updateWorkbookTabOrder(tabOrder: Array<{ type: string; index: number }> | null) {
         this._performAction(() => editor.updateWorkbookTabOrder(tabOrder as editor.TabOrderItem[] | null));
+    }
+
+    public updateWorkbookMetadata(updates: Record<string, unknown>) {
+        this._performAction(() => editor.updateWorkbookMetadata(updates));
     }
 
     // --- Document Operations ---

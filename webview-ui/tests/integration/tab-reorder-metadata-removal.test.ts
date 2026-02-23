@@ -17,6 +17,7 @@ import {
     type TabOrderItem,
     type FileStructure
 } from '../../services/tab-reorder-service';
+import { TabReorderExecutor } from '../../executors/tab-reorder-executor';
 
 /**
  * Helper: Build FileStructure from state.structure array and sheetCount
@@ -912,8 +913,8 @@ Content 2
         });
 
         it('Scenario 1 (moveSheet): S1 → between D1/S2 should REMOVE tab_order', () => {
-            // Current display: [S1, D1, S2, D2] (indices 0, 1, 2, 3)
-            // Action: Move S1 (index 0) to after D1 (index 1) → results in [D1, S1, S2, D2]
+            // Use TabReorderExecutor instead of manual flow simulation
+            // This matches the actual production code path
             const tabs: Array<{ type: 'sheet' | 'document' | 'add-sheet'; sheetIndex?: number; docIndex?: number }> = [
                 { type: 'sheet', sheetIndex: 0 }, // S1 at index 0
                 { type: 'document', docIndex: 0 }, // D1 at index 1
@@ -921,47 +922,40 @@ Content 2
                 { type: 'document', docIndex: 1 } // D2 at index 3
             ];
 
-            const action = determineReorderAction(tabs, 0, 2); // S1 to position 2 (after D1)
+            // Verify action returns metadataRequired=false (natural order restoration)
+            const action = determineReorderAction(tabs, 0, 2);
+            expect(action.actionType).toBe('physical');
+            expect(action.metadataRequired).toBe(false);
+            expect(action.physicalMove?.type).toBe('move-workbook');
 
-            // Step 1: Update metadata based on action
-            // If metadataRequired=true, set new tab_order
-            // If metadataRequired=false but we have existing tab_order, need to remove it
-            if (action.metadataRequired && action.physicalMove && action.newTabOrder) {
-                editor.updateWorkbookTabOrder(action.newTabOrder);
-            } else if (!action.metadataRequired && action.physicalMove) {
-                // Result is natural order, remove existing tab_order
-                editor.updateWorkbookTabOrder(null);
-            }
-
-            // Step 2: Execute physical move if needed
-            if (action.physicalMove?.type === 'move-workbook') {
-                const { direction, targetDocIndex } = action.physicalMove;
-                const toAfterDoc = direction === 'after-doc';
-                const moveResult = editor.moveWorkbookSection(targetDocIndex, toAfterDoc, false, 2);
-
-                if (moveResult && !moveResult.error && moveResult.content) {
-                    const wbUpdate = editor.generateAndGetRange();
-
-                    if (wbUpdate && !wbUpdate.error && wbUpdate.content) {
-                        const lines = moveResult.content.split('\n');
-                        const wbStart = wbUpdate.startLine ?? 0;
-                        const wbEnd = wbUpdate.endLine ?? 0;
-                        const wbContentLines = wbUpdate.content.trimEnd().split('\n');
-                        wbContentLines.push('');
-
-                        const mergedLines = [...lines.slice(0, wbStart), ...wbContentLines, ...lines.slice(wbEnd + 1)];
-                        const mergedContent = mergedLines.join('\n');
-
-                        // New physical: [D1, WB, D2], display: [D1, S1, S2, D2] = natural
-                        // tab_order should be REMOVED
-                        expect(mergedContent).not.toContain('tab_order');
+            // Use TabReorderExecutor to execute the complete flow
+            let finalContent: string | undefined;
+            const callbacks = {
+                postBatchUpdate: (result: { content?: string }) => {
+                    if (result.content) {
+                        finalContent = result.content;
                     }
+                },
+                reorderTabsArray: () => {
+                    // No-op for this test
+                },
+                getCurrentTabOrder: (): Array<{ type: 'sheet' | 'document'; index: number }> => {
+                    return tabs
+                        .filter((t) => t.type === 'sheet' || t.type === 'document')
+                        .map((t) => ({
+                            type: t.type as 'sheet' | 'document',
+                            index: t.type === 'sheet' ? t.sheetIndex! : t.docIndex!
+                        }));
                 }
-            } else if (!action.metadataRequired && action.actionType === 'metadata') {
-                // Metadata-only case: remove metadata
-                editor.updateWorkbookTabOrder(null);
-                const wbUpdate = editor.generateAndGetRange();
-                expect(wbUpdate.content).not.toContain('tab_order');
+            };
+
+            const result = TabReorderExecutor.execute(tabs, 0, 2, callbacks);
+            expect(result.success).toBe(true);
+
+            // The final content should NOT contain tab_order
+            // because the result is natural order [D1, S1, S2, D2]
+            if (finalContent) {
+                expect(finalContent).not.toContain('tab_order');
             }
         });
 

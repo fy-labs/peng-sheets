@@ -66,7 +66,7 @@ describe('Tab Reorder Structural E2E', () => {
 
 `;
 
-            editor.initializeWorkbook(INITIAL_MD, '{}');
+            editor.initializeWorkbook(INITIAL_MD, JSON.stringify({ rootMarker: '# Tables' }));
 
             const tabs: TestTab[] = [
                 { type: 'sheet', sheetIndex: 0 }, // S1
@@ -112,7 +112,7 @@ describe('Tab Reorder Structural E2E', () => {
 
 `;
 
-            editor.initializeWorkbook(INITIAL_MD, '{}');
+            editor.initializeWorkbook(INITIAL_MD, JSON.stringify({ rootMarker: '# Tables' }));
 
             const tabs: TestTab[] = [
                 { type: 'sheet', sheetIndex: 0 },
@@ -154,7 +154,7 @@ describe('Tab Reorder Structural E2E', () => {
 
 `;
 
-            editor.initializeWorkbook(INITIAL_MD, '{}');
+            editor.initializeWorkbook(INITIAL_MD, JSON.stringify({ rootMarker: '# Tables' }));
 
             const tabs: TestTab[] = [
                 { type: 'sheet', sheetIndex: 0 },
@@ -192,7 +192,7 @@ describe('Tab Reorder Structural E2E', () => {
 
 `;
 
-            editor.initializeWorkbook(INITIAL_MD, '{}');
+            editor.initializeWorkbook(INITIAL_MD, JSON.stringify({ rootMarker: '# Tables' }));
 
             const tabs: TestTab[] = [
                 { type: 'sheet', sheetIndex: 0 },
@@ -233,7 +233,7 @@ describe('Tab Reorder Structural E2E', () => {
 
 `;
 
-            editor.initializeWorkbook(INITIAL_MD, '{}');
+            editor.initializeWorkbook(INITIAL_MD, JSON.stringify({ rootMarker: '# Tables' }));
 
             const tabs: TestTab[] = [
                 { type: 'sheet', sheetIndex: 0 },

@@ -140,7 +140,7 @@ This specification follows the [GitHub Task List](https://docs.github.com/en/get
 ## 8. App & File Structure Integration
 ### 8.1. Hybrid Document Model (Sheets + Docs)
 The application treats a Markdown file as a collection of "Tabs".
-- [x] **Workbook Section**: A specific top-level header (default `# Tables`) acts as the container for Spreadsheet Sheets.
+- [x] **Workbook Section**: A specific top-level header (default auto-detected, e.g. `# Workbook`) acts as the container for Spreadsheet Sheets.
     - [x] Sub-headers (default `## SheetName`) within this section are parsed as individual **Sheet Tabs**.
 - [x] **Document Sections**: All *other* top-level headers (e.g., `# Introduction`, `# Appendix`) are treated as **Document Tabs**.
     - [x] These tabs display the Markdown text content effectively as a "Text Sheet".
@@ -148,10 +148,10 @@ The application treats a Markdown file as a collection of "Tabs".
     - [x] **Visual Distinction**: Tabs have icons indicating their type (e.g., Grid icon for Sheets, Document icon for Text).
 
 ### 8.2. Empty State (Onboarding)
-- [x] **Condition**: If the Markdown file does not contain the Workbook Section (`# Tables`).
+- [x] **Condition**: If the Markdown file does not contain the Workbook Section (e.g., `# Workbook`).
 - [x] **UI**: specific "Home" view is displayed instead of a blank grid.
 *   **Actions**:
-    - [x] "Create Spreadsheet": Appends the Workbook Section (`# Tables`) and an initial Sheet (`## Sheet 1`) to the file.
+    - [x] "Create Spreadsheet": Appends the Workbook Section (`# Workbook`) and an initial Sheet (`## Sheet 1`) to the file.
 
 ### 8.3. Flexible Persistence
 - [x] **Reading**: The parser identifies tables regardless of their location in the file (scanning for Workbook Section).
@@ -161,14 +161,14 @@ The application treats a Markdown file as a collection of "Tabs".
 *   **Content Preservation**:
     - [x] When deleting sheets, content before and after the Workbook Section MUST be preserved.
     - [x] The Workbook Section boundary is determined by the next top-level header (same level as root marker) or end of file.
-    - [x] Example: In a document with `# Tables` followed by `# Appendix`, deleting all sheets removes only the content between these headers.
+    - [x] Example: In a document with `# Workbook` followed by `# Appendix`, deleting all sheets removes only the content between these headers.
 
 ### 8.4. Tab Reordering Rules
 Documents and Sheets are different types of tabs that can be mixed in the UI tab bar.
 
 *   **Markdown Structure**:
     - [x] **Workbook**: A Workbook (collection of Sheets) always exists as a contiguous unit in the Markdown file.
-    - [x] **Documents**: Documents can appear before, or after Workbooks (e.g., `# Intro`, `# Tables`, `# Appendix`).
+    - [x] **Documents**: Documents can appear before, or after Workbooks (e.g., `# Intro`, `# Workbook`, `# Appendix`).
 
 *   **UI Tab Order**:
     - [x] UI tab order can mix Sheets and Documents freely (e.g., `[Sheet1, Doc1, Sheet2, Doc2]`).
@@ -214,7 +214,7 @@ This matrix defines the expected behavior for all tab drag-and-drop scenarios. E
 
 **Fundamental Principles:**
 
-1. **Sheets are inseparable from Workbook**: Sheets (`## SheetName`) can only exist within the Workbook section (`# Tables`). Moving a Sheet outside the Workbook means moving the entire Workbook.
+1. **Sheets are inseparable from Workbook**: Sheets (`## SheetName`) can only exist within the Workbook section (`# Workbook`). Moving a Sheet outside the Workbook means moving the entire Workbook.
 
 2. **Cross-type tab order placement**: When the UI tab order shows a Document between Sheets (e.g., `[S1, D1, S2]`), that Document is **always physically placed after the Workbook** in the Markdown file. The file structure would be `[WB(S1,S2), D1]`.
 

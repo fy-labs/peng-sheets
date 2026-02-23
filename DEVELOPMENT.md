@@ -46,6 +46,54 @@ async function example() {
 
 The extension uses the `md-spreadsheet-parser` NPM package for Markdown parsing. This package is installed as a dependency and bundled with the extension.
 
+### Using Development Parser (Not Published to PyPI)
+
+When using a locally built `md-spreadsheet-parser` during development:
+
+> [!IMPORTANT]
+> **Do NOT use `npm install` for local development parser.** Use direct copy instead.
+
+```bash
+# ❌ WRONG: npm install causes WASM loading errors in Vitest
+npm install ../md-spreadsheet-parser/packages/npm
+
+# ✅ CORRECT: Direct copy works reliably
+rm -rf node_modules/md-spreadsheet-parser
+cp -R ../md-spreadsheet-parser/packages/npm node_modules/md-spreadsheet-parser
+```
+
+**Why?** `npm install` with local paths creates symlinks or performs file transformations that break WASM loading in the Vitest test environment (`ERR_INVALID_URL_SCHEME` errors). Direct copy preserves the exact file structure.
+
+### Updating the Parser (Full Procedure)
+
+When updating parser after Python changes:
+
+> [!CAUTION]
+> **Must clean Extension build cache** after parser update, otherwise Vite may bundle stale WASM.
+
+```bash
+# 1. Build Python wheel in parser directory (use -o dist to ensure correct output)
+cd ../md-spreadsheet-parser
+uv build -o dist
+
+# 2. Build NPM package
+cd packages/npm
+npm run build
+
+# 3. Copy to Extension
+cd ../../..  # back to peng-sheets
+rm -rf node_modules/md-spreadsheet-parser
+cp -R ../md-spreadsheet-parser/packages/npm node_modules/md-spreadsheet-parser
+
+# 4. CRITICAL: Clean Extension build cache
+rm -rf out
+
+# 5. Rebuild Extension
+npm run compile
+```
+
+**Common Problem**: `uv build` in a workspace may output to the workspace root (`md-spreadsheet-suite/dist`) instead of the submodule (`md-spreadsheet-parser/dist`). Always use `uv build -o dist` to ensure correct output location.
+
 ## 4. Frontend Development (Webview)
 
 ### Testing
@@ -420,102 +468,24 @@ it('should remove tab_order', () => {
 
 ---
 
+## 6.10 Known Bug Patterns & Hazards
+
+### The "Multiple updateRange" Hazard (Content Prepending Bug)
+
+**Problem:** If multiple `updateRange` messages are sent to VS Code in quick succession without waiting for synchronization (e.g., updating a sheet name, then updating its content separately in the same synchronous block), the second message calculates its replacement range based on the *old* file state.
+
+**The Bug Mechanism** (as seen in older `docsheet-save-bug`):
+1. **Initial State**: File has 6 lines.
+2. **Operation A**: Modifies content (e.g., renames sheet) causing the file to grow. It sends `{ startLine: 0, endLine: 5, content: '7 lines of text' }`.
+3. VS Code applies Operation A. The file is now 7 lines.
+4. **Operation B**: Happens immediately after and sends `{ startLine: 0, endLine: 5, content: 'new content for 7 lines' }`.
+5. **The Failure**: Because `endLine` is still `5`, VS Code only replaces lines 0-4 of the new 7-line file. Lines 5-6 from Operation A are left intact, resulting in old content bleeding into the new content (e.g., an old trailing word like "before" remains at the end).
+
+**The Fix / Prevention:**
+Always batch operations that mutate the document sequentially. By using the `startBatch()` and `endBatch()` pattern (see 6.6), the system ensures that only *one* `updateRange` message with the final, fully-resolved content is sent to VS Code.
+
+---
+
 ## 7. For Maintainers
 
-This section describes the release procedure for publishing a new version.
-
-### 7.1 Pre-Release Checklist
-
-- [ ] All changes are tested and working correctly.
-- [ ] All tests pass (`npm test` and `npm run test:webview`).
-- [ ] Extension packages successfully (`vsce package`).
-
-### 7.2 Update CHANGELOG.md
-
-1.  **Move `[Unreleased]` entries to the new version section**:
-    -   Change `## [Unreleased]` heading to `## [X.Y.Z] - YYYY-MM-DD`.
-    -   Add a new empty `## [Unreleased]` section above it.
-
-2.  **Categorize changes using these headings**:
-    -   `### Added` - New features.
-    -   `### Changed` - Changes in existing functionality.
-    -   `### Fixed` - Bug fixes.
-    -   `### Removed` - Removed features.
-    -   `### Improved` - Performance or UX improvements.
-
-3.  **Example**:
-    ```markdown
-    ## [Unreleased]
-
-    ## [1.0.4] - 2026-01-15
-
-    ### Added
-    - New feature description.
-
-    ### Fixed
-    - Bug fix description.
-    ```
-
-### 7.3 Version Bump & Git Tag
-
-1.  **Bump version in `package.json`**:
-    ```bash
-    npm version patch  # or minor / major
-    ```
-    This automatically:
-    -   Updates `version` in `package.json`.
-    -   Creates a git commit with message `vX.Y.Z`.
-    -   Creates a git tag `vX.Y.Z`.
-
-2.  **Push the commit and tag**:
-    ```bash
-    git push origin main
-    git push origin vX.Y.Z
-    ```
-
-### 7.4 Create GitHub Release
-
-1.  Go to the repository's **Releases** page on GitHub.
-2.  Click **"Draft a new release"**.
-3.  Select the tag `vX.Y.Z` you just pushed.
-4.  Set the release title to `vX.Y.Z` (e.g., `v1.0.4`).
-5.  Copy the relevant section from `CHANGELOG.md` into the release description.
-6.  Attach the `.vsix` file (`peng-sheets-X.Y.Z.vsix`) as a release asset.
-7.  Click **"Publish release"**.
-
-### 7.5 Publish Extension
-
-After creating the GitHub release, publish the extension to marketplaces.
-
-#### Using the Publish Script (Recommended)
-
-1.  **Set up `.env`** (in project root or `peng-sheets/`):
-    ```bash
-    OPEN_VSX_TOKEN=your_open_vsx_token_here
-    ```
-
-2.  **Run the publish script**:
-    ```bash
-    node scripts/publish.mjs
-    ```
-
-**Options**:
--   `--vsce-only` - Publish to VS Code Marketplace only.
--   `--ovsx-only` - Publish to Open VSX Registry only.
--   `--dry-run` - Preview what would be done without publishing.
-
-#### Manual Publishing
-
-```bash
-# VS Code Marketplace
-vsce publish
-
-# Open VSX Registry
-ovsx publish peng-sheets-X.Y.Z.vsix -p <OPEN_VSX_TOKEN>
-```
-
-### 7.6 Post-Release Verification
-
-- [ ] Verify the extension is visible on [VS Code Marketplace](https://marketplace.visualstudio.com/).
-- [ ] Verify the GitHub Release page shows the correct assets and notes.
-- [ ] Install from marketplace in a fresh VS Code instance to confirm it works.
+The release procedure (version bumping, changelog updates, and publishing to marketplaces) has been moved to the root [`MAINTAINER_GUIDE.md`](../MAINTAINER_GUIDE.md). Please refer to that document for publishing instructions.

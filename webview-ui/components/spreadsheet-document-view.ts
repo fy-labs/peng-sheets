@@ -18,6 +18,15 @@ export class SpreadsheetDocumentView extends LitElement {
     @property({ type: Number })
     sectionIndex: number = 0;
 
+    @property({ type: Boolean })
+    isDocSheet: boolean = false;
+
+    @property({ type: Boolean })
+    isRootTab: boolean = false;
+
+    @property({ type: Number })
+    sheetIndex: number = 0;
+
     @state()
     private _isEditing: boolean = false;
 
@@ -34,7 +43,11 @@ export class SpreadsheetDocumentView extends LitElement {
     }
 
     private _getFullContent(): string {
-        // Combine title (h1) with body content
+        // Root tab has no title header, just content
+        if (this.isRootTab) {
+            return this.content;
+        }
+        // Combine title (h1) with body content for documents
         return `# ${this.title}\n${this.content}`;
     }
 
@@ -56,8 +69,9 @@ export class SpreadsheetDocumentView extends LitElement {
     }
 
     private _enterEditMode(): void {
-        // Include h1 header in edit content
-        this._editContent = this._getFullContent();
+        // For root tab, edit content directly without header
+        // For documents, include h1 header in edit content
+        this._editContent = this.isRootTab ? this.content : this._getFullContent();
         this._isEditing = true;
 
         // Focus the textarea after it renders
@@ -120,7 +134,12 @@ export class SpreadsheetDocumentView extends LitElement {
             break; // stop after first non-empty line
         }
 
-        const body = lines.slice(bodyStartIndex).join('\n');
+        let body = lines.slice(bodyStartIndex).join('\n');
+        // Strip exactly one leading newline to avoid double blank lines
+        // The markdown generator already adds a blank line after sheet headers
+        if (body.startsWith('\n')) {
+            body = body.substring(1);
+        }
         return { title, body };
     }
 
@@ -132,18 +151,47 @@ export class SpreadsheetDocumentView extends LitElement {
         this._debounceTimer = window.setTimeout(() => {
             const { title, body } = this._extractTitleAndBody(this._editContent);
 
-            this.dispatchEvent(
-                new CustomEvent('document-change', {
-                    bubbles: true,
-                    composed: true,
-                    detail: {
-                        sectionIndex: this.sectionIndex,
-                        content: body,
-                        title: title,
-                        save: shouldSave
-                    }
-                })
-            );
+            if (this.isRootTab) {
+                // For root tab, dispatch root-content-change event
+                this.dispatchEvent(
+                    new CustomEvent('root-content-change', {
+                        bubbles: true,
+                        composed: true,
+                        detail: {
+                            content: this._editContent, // Root tab uses raw edit content
+                            save: shouldSave
+                        }
+                    })
+                );
+            } else if (this.isDocSheet) {
+                // For doc sheets within workbook, dispatch doc-sheet-change event
+                this.dispatchEvent(
+                    new CustomEvent('doc-sheet-change', {
+                        bubbles: true,
+                        composed: true,
+                        detail: {
+                            sheetIndex: this.sheetIndex,
+                            content: body,
+                            title: title,
+                            save: shouldSave
+                        }
+                    })
+                );
+            } else {
+                // For standalone document sections
+                this.dispatchEvent(
+                    new CustomEvent('document-change', {
+                        bubbles: true,
+                        composed: true,
+                        detail: {
+                            sectionIndex: this.sectionIndex,
+                            content: body,
+                            title: title,
+                            save: shouldSave
+                        }
+                    })
+                );
+            }
         }, 100);
     }
 

@@ -122,7 +122,7 @@ export async function newWorkbookHandler() {
 
     // Create template content
     const config = vscode.workspace.getConfiguration('pengSheets.parsing');
-    const rootMarker = config.get<string>('rootMarker') || '# Tables';
+    const rootMarker = config.get<string>('rootMarker') || '# Workbook';
     const [col1, col2, col3] = getDefaultColumnNames();
     const template = `${rootMarker}\n\n## Sheet 1\n\n### Table 1\n\n| ${col1} | ${col2} | ${col3} |\n|---|---|---|\n|   |   |   |\n`;
 

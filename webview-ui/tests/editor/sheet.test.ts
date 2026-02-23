@@ -19,7 +19,8 @@ import {
 
 const SAMPLE_CONFIG = JSON.stringify({
     rootMarker: '# Tables',
-    sheetHeaderLevel: 2
+    sheetHeaderLevel: 2,
+    tableHeaderLevel: 3
 });
 
 const SIMPLE_MD = `# Tables

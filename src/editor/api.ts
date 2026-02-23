@@ -44,12 +44,16 @@ export function getState(): string {
 /**
  * Create a new spreadsheet with initial columns.
  */
-export function createNewSpreadsheet(columnNames: string[] | null = null): UpdateResult {
+export function createNewSpreadsheet(
+    columnNames: string[] | null = null,
+    sheetName: string = '',
+    tableName: string | null = null
+): UpdateResult {
     const context = getContext();
     if (!context.workbook) {
         initializeWorkbook('', '{}');
     }
-    return sheetService.addSheet(context, '', columnNames);
+    return sheetService.addSheet(context, sheetName, columnNames, tableName);
 }
 
 // =============================================================================
@@ -62,6 +66,34 @@ export function createNewSpreadsheet(columnNames: string[] | null = null): Updat
  */
 export function updateWorkbookTabOrder(tabOrder: TabOrderItem[] | null): UpdateResult {
     return workbookService.updateWorkbookTabOrder(getContext(), tabOrder);
+}
+
+/**
+ * Update workbook metadata with the provided fields.
+ */
+export function updateWorkbookMetadata(updates: Record<string, unknown>): UpdateResult {
+    return workbookService.updateWorkbookMetadata(getContext(), updates);
+}
+
+/**
+ * Update the root content of a workbook.
+ */
+export function updateRootContent(content: string): UpdateResult {
+    return workbookService.updateRootContent(getContext(), content);
+}
+
+/**
+ * Delete the root content of a workbook.
+ */
+export function deleteRootContent(): UpdateResult {
+    return workbookService.deleteRootContent(getContext());
+}
+
+/**
+ * Rename a workbook.
+ */
+export function renameWorkbook(newName: string): UpdateResult {
+    return workbookService.renameWorkbook(getContext(), newName);
 }
 
 // =============================================================================
@@ -79,6 +111,18 @@ export function addSheet(
     targetTabOrderIndex: number | null = null
 ): UpdateResult {
     return sheetService.addSheet(getContext(), newName, columnNames, tableName, afterSheetIndex, targetTabOrderIndex);
+}
+
+/**
+ * Add a new doc sheet (document-type sheet within workbook).
+ */
+export function addDocSheet(
+    newName: string,
+    content: string = '',
+    afterSheetIndex: number | null = null,
+    targetTabOrderIndex: number | null = null
+): UpdateResult {
+    return sheetService.addDocSheet(getContext(), newName, content, afterSheetIndex, targetTabOrderIndex);
 }
 
 /**
@@ -107,6 +151,20 @@ export function moveSheet(fromIndex: number, toIndex: number, targetTabOrderInde
  */
 export function updateSheetMetadata(sheetIdx: number, metadata: Record<string, unknown>): UpdateResult {
     return sheetService.updateSheetMetadata(getContext(), sheetIdx, metadata);
+}
+
+/**
+ * Update sheet name.
+ */
+export function updateSheetName(sheetIdx: number, newName: string): UpdateResult {
+    return sheetService.renameSheet(getContext(), sheetIdx, newName);
+}
+
+/**
+ * Update doc sheet content.
+ */
+export function updateDocSheetContent(sheetIdx: number, content: string): UpdateResult {
+    return sheetService.updateDocSheetContent(getContext(), sheetIdx, content);
 }
 
 // =============================================================================
@@ -390,6 +448,13 @@ export function addDocumentAndGetFullUpdate(
  */
 export function renameDocument(docIndex: number, newTitle: string): UpdateResult {
     return documentService.renameDocument(getContext(), docIndex, newTitle);
+}
+
+/**
+ * Update document section content (title and body).
+ */
+export function updateDocumentContent(docIndex: number, title: string, content: string): UpdateResult {
+    return documentService.updateDocumentContent(getContext(), docIndex, title, content);
 }
 
 /**

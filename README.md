@@ -96,9 +96,9 @@ PengSheets offers extensive customization to match your documentation style:
 
 | Setting | Description | Default |
 |:--------|:------------|:--------|
-| `pengSheets.parsing.rootMarker` | Marker indicating the start of the data section | `# Tables` |
-| `pengSheets.parsing.sheetHeaderLevel` | Header level for sheet names (e.g., 2 for `##`) | `2` |
-| `pengSheets.parsing.tableHeaderLevel` | Header level for table names (e.g., 3 for `###`) | `3` |
+| `pengSheets.parsing.rootMarker` | Marker indicating the start of the data section | `null` (Auto-detect) |
+| `pengSheets.parsing.sheetHeaderLevel` | Header level for sheet names (e.g., 2 for `##`) | `null` (Auto-detect) |
+| `pengSheets.parsing.tableHeaderLevel` | Header level for table names (e.g., 3 for `###`) | `null` (Auto-detect) |
 | `pengSheets.parsing.captureDescription` | Capture text between header and table as description | `true` |
 | `pengSheets.parsing.columnSeparator` | Column separator character | `\|` |
 | `pengSheets.parsing.headerSeparatorChar` | Header separator character | `-` |

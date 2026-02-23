@@ -28,9 +28,9 @@ export class TabContextMenu extends LitElement {
     @property({ type: Number })
     y = 0;
 
-    /** Type of the tab: 'sheet' or 'document' */
+    /** Type of the tab: 'sheet', 'document', or 'root' */
     @property({ type: String })
-    tabType: 'sheet' | 'document' = 'sheet';
+    tabType: 'sheet' | 'document' | 'root' = 'sheet';
 
     /** Adjusted Y position after overflow check */
     @state()
@@ -104,14 +104,23 @@ export class TabContextMenu extends LitElement {
                               ${t('deleteSheet')}
                           </div>
                       `
-                    : html`
-                          <div class="context-menu-item" @click="${() => this._dispatchAction('rename')}">
-                              ${t('renameDocument')}
-                          </div>
-                          <div class="context-menu-item" @click="${() => this._dispatchAction('delete')}">
-                              ${t('deleteDocument')}
-                          </div>
-                      `}
+                    : this.tabType === 'root'
+                      ? html`
+                            <div class="context-menu-item" @click="${() => this._dispatchAction('rename')}">
+                                ${t('renameTabName')}
+                            </div>
+                            <div class="context-menu-item" @click="${() => this._dispatchAction('delete')}">
+                                ${t('deleteOverviewTab')}
+                            </div>
+                        `
+                      : html`
+                            <div class="context-menu-item" @click="${() => this._dispatchAction('rename')}">
+                                ${t('renameDocument')}
+                            </div>
+                            <div class="context-menu-item" @click="${() => this._dispatchAction('delete')}">
+                                ${t('deleteDocument')}
+                            </div>
+                        `}
                 <div class="menu-divider"></div>
                 <div class="context-menu-item" @click="${() => this._dispatchAction('add-document')}">
                     ${t('addNewDocument')}

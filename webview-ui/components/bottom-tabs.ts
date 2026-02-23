@@ -8,7 +8,7 @@ import { isRealEnterKey } from '../utils/keyboard-utils';
 
 export interface TabDefinition {
     title: string;
-    type: 'sheet' | 'document' | 'add-sheet' | 'onboarding';
+    type: 'sheet' | 'document' | 'root' | 'add-sheet' | 'onboarding';
     data?: unknown;
     sheetIndex?: number;
     documentIndex?: number;
@@ -120,7 +120,7 @@ export class BottomTabs extends LitElement {
     }
 
     private _handleDoubleClick(index: number, tab: TabDefinition) {
-        if (tab.type === 'sheet' || tab.type === 'document') {
+        if (tab.type === 'sheet' || tab.type === 'document' || tab.type === 'root') {
             this.dispatchEvent(
                 new CustomEvent('tab-edit-start', {
                     detail: { index },
@@ -179,14 +179,14 @@ export class BottomTabs extends LitElement {
             activeElement.blur();
         }
 
-        if (tab.type === 'add-sheet') return;
+        if (tab.type === 'add-sheet' || tab.type === 'root') return;
         if (this.editingIndex === index) return;
         this._dragCtrl.startPotentialDrag(e, index);
     }
 
     private _handleMouseMove(e: MouseEvent, index: number, tab: TabDefinition) {
         if (!this._dragCtrl.isDragging) return;
-        if (tab.type === 'add-sheet') return;
+        if (tab.type === 'add-sheet' || tab.type === 'root') return;
 
         const target = e.currentTarget as HTMLElement;
         this._dragCtrl.updateDropTarget(index, target, e.clientX);
@@ -203,6 +203,8 @@ export class BottomTabs extends LitElement {
             return html`<span class="codicon codicon-table"></span>`;
         } else if (tab.type === 'document') {
             return html`<span class="codicon codicon-file"></span>`;
+        } else if (tab.type === 'root') {
+            return html`<span class="codicon codicon-home"></span>`;
         } else if (tab.type === 'add-sheet') {
             return html`<span class="codicon codicon-add"></span>`;
         } else if (tab.type === 'onboarding') {

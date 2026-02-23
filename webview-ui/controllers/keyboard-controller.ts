@@ -125,6 +125,14 @@ export class KeyboardController implements ReactiveController {
             return;
         }
 
+        if (isControl && (e.key === 'x' || e.key === 'X')) {
+            e.preventDefault();
+            this.host.clipboardCtrl.copyToClipboard().then(() => {
+                this.host.editCtrl.deleteSelection();
+            });
+            return;
+        }
+
         if (isControl && (e.key === 'v' || e.key === 'V')) {
             e.preventDefault();
             this.host.clipboardCtrl.paste();

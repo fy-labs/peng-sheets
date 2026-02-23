@@ -79,7 +79,7 @@ Content of Doc 2.
 Content of Doc 3.
 `;
 
-        editor.initializeWorkbook(mdContent, '{}');
+        editor.initializeWorkbook(mdContent, JSON.stringify({ rootMarker: '# Tables' }));
         service = new SpreadsheetService(mockVscode);
         await service.initialize();
 
@@ -162,7 +162,7 @@ Content of Doc 3.
 Content
 `;
 
-        editor.initializeWorkbook(mdContent, '{}');
+        editor.initializeWorkbook(mdContent, JSON.stringify({ rootMarker: '# Tables' }));
         service = new SpreadsheetService(mockVscode);
         await service.initialize();
 
@@ -232,7 +232,7 @@ Content
 # Doc 3
 `;
 
-        editor.initializeWorkbook(mdContent, '{}');
+        editor.initializeWorkbook(mdContent, JSON.stringify({ rootMarker: '# Tables' }));
         service = new SpreadsheetService(mockVscode);
         await service.initialize();
 
@@ -345,7 +345,7 @@ Content
 # Doc 3
 `;
 
-        editor.initializeWorkbook(mdContent, '{}');
+        editor.initializeWorkbook(mdContent, JSON.stringify({ rootMarker: '# Tables' }));
 
         // Step 1: Update metadata (as _handleTabReorder does)
         const metadataResult = editor.updateWorkbookTabOrder([
