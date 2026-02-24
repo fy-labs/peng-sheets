@@ -42,12 +42,16 @@ export class SpreadsheetDocumentView extends LitElement {
         }
     }
 
-    private _getFullContent(): string {
+    private _getFullContent(includeHeader: boolean = true): string {
         // Root tab has no title header, just content
         if (this.isRootTab) {
             return this.content;
         }
-        // Combine title (h1) with body content for documents
+        // Edit mode: body content only (tab name is editable via double-click)
+        if (!includeHeader) {
+            return this.content;
+        }
+        // Preview mode: combine title (h1) with body content for rendering
         return `# ${this.title}\n${this.content}`;
     }
 
@@ -71,7 +75,7 @@ export class SpreadsheetDocumentView extends LitElement {
     private _enterEditMode(): void {
         // For root tab, edit content directly without header
         // For documents, include h1 header in edit content
-        this._editContent = this.isRootTab ? this.content : this._getFullContent();
+        this._editContent = this.isRootTab ? this.content : this._getFullContent(false);
         this._isEditing = true;
 
         // Focus the textarea after it renders
@@ -80,6 +84,7 @@ export class SpreadsheetDocumentView extends LitElement {
             if (textarea) {
                 textarea.focus();
                 textarea.setSelectionRange(0, 0);
+                textarea.scrollTop = 0;
             }
         });
     }
@@ -88,7 +93,7 @@ export class SpreadsheetDocumentView extends LitElement {
         if (!this._isEditing) return;
         this._isEditing = false;
 
-        const currentFullContent = this._getFullContent();
+        const currentFullContent = this._getFullContent(false);
 
         // Only save if content changed (compare full content including title)
         if (this._editContent !== currentFullContent) {
@@ -112,35 +117,15 @@ export class SpreadsheetDocumentView extends LitElement {
     private _handleKeyDown(e: KeyboardEvent): void {
         // Escape exits edit mode without saving
         if (e.key === 'Escape') {
-            this._editContent = this._getFullContent();
+            this._editContent = this._getFullContent(false);
             this._isEditing = false;
         }
     }
 
     private _extractTitleAndBody(content: string): { title: string; body: string } {
-        // Extract h1 header from content
-        const lines = content.split('\n');
-        let title = this.title; // default to existing title
-        let bodyStartIndex = 0;
-
-        // Look for # header at the beginning
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i].trim();
-            if (line === '') continue; // skip empty lines
-            if (line.startsWith('# ')) {
-                title = line.substring(2).trim();
-                bodyStartIndex = i + 1;
-            }
-            break; // stop after first non-empty line
-        }
-
-        let body = lines.slice(bodyStartIndex).join('\n');
-        // Strip exactly one leading newline to avoid double blank lines
-        // The markdown generator already adds a blank line after sheet headers
-        if (body.startsWith('\n')) {
-            body = body.substring(1);
-        }
-        return { title, body };
+        // Edit mode no longer includes header in textarea,
+        // so content IS the body. Title is preserved from the component property.
+        return { title: this.title, body: content };
     }
 
     private _saveContent(shouldSave: boolean = false): void {
@@ -199,7 +184,7 @@ export class SpreadsheetDocumentView extends LitElement {
         return html`
             <div class="container">
                 ${this._isEditing
-                    ? html`
+                ? html`
                           <div class="edit-container">
                               <div class="edit-hint visible">${t('pressEscapeToCancel')}</div>
                               <textarea
@@ -219,7 +204,7 @@ export class SpreadsheetDocumentView extends LitElement {
                               Save
                           </button>
                       `
-                    : html`
+                : html`
                           <div class="output" @click=${this._enterEditMode}>
                               ${unsafeHTML(this._getRenderedContent())}
                           </div>

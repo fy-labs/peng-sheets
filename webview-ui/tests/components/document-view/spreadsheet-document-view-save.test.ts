@@ -14,7 +14,8 @@ describe('SpreadsheetDocumentView save functionality', () => {
         document.body.appendChild(container);
 
         element = document.createElement('spreadsheet-document-view') as HTMLElement;
-        (element as any).content = '# Test Content\n\nSome text';
+        (element as any).title = 'Test Content';
+        (element as any).content = 'Some text';
         (element as any).sectionIndex = 0;
         container.appendChild(element);
 
@@ -46,8 +47,8 @@ describe('SpreadsheetDocumentView save functionality', () => {
         const textarea = shadowRoot!.querySelector('textarea') as HTMLTextAreaElement;
         expect(textarea).toBeTruthy();
 
-        // Modify the content
-        textarea.value = '# Modified Content\n\nNew text';
+        // Modify the content (edit mode only shows body, no header)
+        textarea.value = 'New text';
         textarea.dispatchEvent(new Event('input', { bubbles: true }));
 
         // Trigger blur to save
@@ -58,10 +59,10 @@ describe('SpreadsheetDocumentView save functionality', () => {
 
         // Verify event was dispatched
         expect(eventSpy).toHaveBeenCalled();
-        // Event includes both content (body) and title
+        // Title is preserved from component property, content is from textarea
         expect(eventSpy.mock.calls[0][0].detail.sectionIndex).toEqual(0);
         expect(eventSpy.mock.calls[0][0].detail.content).toEqual('New text');
-        expect(eventSpy.mock.calls[0][0].detail.title).toEqual('Modified Content');
+        expect(eventSpy.mock.calls[0][0].detail.title).toEqual('Test Content');
     });
 
     it('should NOT dispatch document-change event if content is unchanged', async () => {
@@ -97,8 +98,8 @@ describe('SpreadsheetDocumentView save functionality', () => {
 
         const textarea = shadowRoot!.querySelector('textarea') as HTMLTextAreaElement;
 
-        // Change content
-        textarea.value = '# Modified Content';
+        // Change content (edit mode only shows body, no header)
+        textarea.value = 'Modified Content';
         textarea.dispatchEvent(new Event('input', { bubbles: true }));
 
         // Press Escape
@@ -125,8 +126,8 @@ describe('SpreadsheetDocumentView save functionality', () => {
         const textarea = shadowRoot!.querySelector('textarea') as HTMLTextAreaElement;
         const saveButton = shadowRoot!.querySelector('.save-button') as HTMLElement;
 
-        // Change content
-        textarea.value = '# Changed\n\nContent';
+        // Change content (edit mode only shows body, no header)
+        textarea.value = 'Content';
         textarea.dispatchEvent(new Event('input', { bubbles: true }));
 
         // Click Save (this calls _exitEditMode(true))

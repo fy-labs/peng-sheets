@@ -5,6 +5,7 @@ import styles from './styles/bottom-tabs.css?inline';
 import codiconsStyles from '@vscode/codicons/dist/codicon.css?inline';
 import { TabDragController } from '../controllers/tab-drag-controller';
 import { isRealEnterKey } from '../utils/keyboard-utils';
+import { isDocSheetType, SheetJSON } from '../types';
 
 export interface TabDefinition {
     title: string;
@@ -199,7 +200,9 @@ export class BottomTabs extends LitElement {
     }
 
     private _renderTabIcon(tab: TabDefinition) {
-        if (tab.type === 'sheet') {
+        if (tab.type === 'sheet' && tab.data && isDocSheetType(tab.data as SheetJSON)) {
+            return html`<span class="codicon codicon-file"></span>`;
+        } else if (tab.type === 'sheet') {
             return html`<span class="codicon codicon-table"></span>`;
         } else if (tab.type === 'document') {
             return html`<span class="codicon codicon-file"></span>`;
