@@ -239,6 +239,8 @@
         "vitest": "^4.0.15"
     },
     "dependencies": {
+        "highlight.js": "^11.11.1",
+        "marked-highlight": "^2.2.3",
         "md-spreadsheet-parser": "^1.3.1"
     }
 }

@@ -84,7 +84,7 @@ export function activate(context: vscode.ExtensionContext) {
     );
 }
 
-export function deactivate() {}
+export function deactivate() { }
 
 export async function newWorkbookHandler() {
     // Get workspace folder
@@ -178,12 +178,16 @@ export function getWebviewContent(
     const initialContent = document.getText();
     const escapedContent = initialContent.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
 
+    const documentDir = vscode.Uri.joinPath(document.uri, '..');
+    const baseUri = webview.asWebviewUri(documentDir).toString() + '/';
+
     return `<!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; font-src ${cspFontSrc}; script-src 'unsafe-inline' ${cspScriptSrc}; connect-src ${cspConnectSrc};">
+        <base href="${baseUri}">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https: data: blob:; style-src 'unsafe-inline'; font-src ${cspFontSrc}; script-src 'unsafe-inline' ${cspScriptSrc}; connect-src ${cspConnectSrc};">
         <title>Markdown Spreadsheet</title>
         <style>
             @font-face {

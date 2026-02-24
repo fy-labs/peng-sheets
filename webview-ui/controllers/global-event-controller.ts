@@ -506,6 +506,13 @@ export class GlobalEventController implements ReactiveController {
                 console.warn('Sync failed, resetting queue state.');
                 this.host.spreadsheetService.notifyUpdateReceived();
                 break;
+            case 'imageSaved':
+                window.dispatchEvent(
+                    new CustomEvent('imageSaved', {
+                        detail: message
+                    })
+                );
+                break;
             case 'insertValue':
                 // Insert value at current selection (used for date/time shortcuts from extension)
                 window.dispatchEvent(
