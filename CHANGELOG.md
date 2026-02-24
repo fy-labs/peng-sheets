@@ -4,6 +4,8 @@ All notable changes to the "PengSheets" extension will be documented in this fil
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-02-24
+
 ### Fixed
 - Fix Doc tab in Single H1 workbook showing table icon and spreadsheet toolbar instead of file icon and no toolbar.
 - Fix edit mode for all Document tabs displaying `# title` header in textarea. Header is now omitted since tab name is editable via double-click.
