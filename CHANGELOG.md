@@ -8,6 +8,13 @@ All notable changes to the "PengSheets" extension will be documented in this fil
 - Native image support in Document tabs with paste and drag-and-drop capabilities.
 - Integrated EasyMDE for enhanced Markdown editing in Document tabs.
 
+## [1.2.1] - 2026-02-24
+
+### Fixed
+- Fix Doc tab in Single H1 workbook showing table icon and spreadsheet toolbar instead of file icon and no toolbar.
+- Fix edit mode for all Document tabs displaying `# title` header in textarea. Header is now omitted since tab name is editable via double-click.
+- Fix edit mode textarea opening scrolled to bottom instead of top.
+
 ## [1.2.0] - 2026-02-23
 ### Changed
 - **Simplified Workbook Detection**: Documents with a single H1 header are now automatically recognized as a Workbook. The previous convention of using `# Tables` as the Workbook marker is no longer required. Documents with multiple H1 headers continue to work as before (backward compatible).

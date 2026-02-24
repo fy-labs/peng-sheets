@@ -26,7 +26,8 @@ describe('SpreadsheetDocumentView save functionality', () => {
         document.body.appendChild(container);
 
         element = document.createElement('spreadsheet-document-view') as HTMLElement;
-        (element as any).content = '# Test Content\n\nSome text';
+        (element as any).title = 'Test Content';
+        (element as any).content = 'Some text';
         (element as any).sectionIndex = 0;
         container.appendChild(element);
 
@@ -55,8 +56,8 @@ describe('SpreadsheetDocumentView save functionality', () => {
         const easymde = (element as any)._easymde;
         expect(easymde).toBeTruthy();
 
-        // Modify the content
-        easymde.value('# Modified Content\n\nNew text');
+        // Modify the content (edit mode no longer includes # title)
+        easymde.value('New text');
         console.log("Called easymde.value()");
 
         // Instead of triggering blur, call _exitEditMode directly because tests can't simulate
@@ -77,10 +78,10 @@ describe('SpreadsheetDocumentView save functionality', () => {
         vi.advanceTimersByTime(500);
         console.log("eventSpy mock calls:", eventSpy.mock.calls);
         expect(eventSpy).toHaveBeenCalled();
-        // Event includes both content (body) and title
+        // Title is preserved from component property, content is from editor
         expect(eventSpy.mock.calls[0][0].detail.sectionIndex).toEqual(0);
         expect(eventSpy.mock.calls[0][0].detail.content).toEqual('New text');
-        expect(eventSpy.mock.calls[0][0].detail.title).toEqual('Modified Content');
+        expect(eventSpy.mock.calls[0][0].detail.title).toEqual('Test Content');
     });
 
     it('should NOT dispatch document-change event if content is unchanged', async () => {
@@ -110,8 +111,8 @@ describe('SpreadsheetDocumentView save functionality', () => {
 
         const easymde = (element as any)._easymde;
 
-        // Change content
-        easymde.value('# Modified Content');
+        // Change content (no # title prefix)
+        easymde.value('Modified Content');
 
         // Cancel edit mode (save=false)
         (element as any)._exitEditMode(false);
@@ -136,8 +137,8 @@ describe('SpreadsheetDocumentView save functionality', () => {
         const easymde = (element as any)._easymde;
         const saveButton = element.querySelector('.save-button') as HTMLElement;
 
-        // Change content
-        easymde.value('# Changed\n\nContent');
+        // Change content (no # title prefix)
+        easymde.value('Changed Content');
 
         // Click Save (this calls _exitEditMode(true))
         saveButton.click();
@@ -147,7 +148,7 @@ describe('SpreadsheetDocumentView save functionality', () => {
 
         expect(eventSpy).toHaveBeenCalledTimes(1);
         const detail = eventSpy.mock.calls[0][0].detail;
-        expect(detail.content).toContain('Content');
+        expect(detail.content).toContain('Changed Content');
         expect(detail.save).toBe(true);
     });
 });

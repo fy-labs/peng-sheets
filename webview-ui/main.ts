@@ -952,7 +952,7 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
         if (!activeTab) return html``;
 
         return html`
-            ${activeTab.type !== 'document' && activeTab.type !== 'onboarding' && activeTab.type !== 'root'
+            ${activeTab.type === 'sheet' && isSheetJSON(activeTab.data) && !isDocSheetType(activeTab.data as SheetJSON)
                 ? html`
                       <spreadsheet-toolbar
                           .activeFormat="${this._activeToolbarFormat}"

@@ -51,12 +51,16 @@ export class SpreadsheetDocumentView extends LitElement {
         }
     }
 
-    private _getFullContent(): string {
+    private _getFullContent(includeHeader: boolean = true): string {
         // Root tab has no title header, just content
         if (this.isRootTab) {
             return this.content;
         }
-        // Combine title (h1) with body content for documents
+        // Edit mode: body content only (tab name is editable via double-click)
+        if (!includeHeader) {
+            return this.content;
+        }
+        // Preview mode: combine title (h1) with body content for rendering
         return `# ${this.title}\n${this.content}`;
     }
 
@@ -89,7 +93,7 @@ export class SpreadsheetDocumentView extends LitElement {
     }
 
     private async _enterEditMode(): Promise<void> {
-        this._editContent = this.isRootTab ? this.content : this._getFullContent();
+        this._editContent = this.isRootTab ? this.content : this._getFullContent(false);
         this._isEditing = true;
 
         await this.updateComplete;
@@ -244,7 +248,7 @@ export class SpreadsheetDocumentView extends LitElement {
         }
 
         this._isEditing = false;
-        const currentFullContent = this._getFullContent();
+        const currentFullContent = this._getFullContent(false);
 
         if (this._editContent !== currentFullContent) {
             this._saveContent(shouldSave);
@@ -260,25 +264,9 @@ export class SpreadsheetDocumentView extends LitElement {
     }
 
     private _extractTitleAndBody(content: string): { title: string; body: string } {
-        const lines = content.split('\n');
-        let title = this.title;
-        let bodyStartIndex = 0;
-
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i].trim();
-            if (line === '') continue;
-            if (line.startsWith('# ')) {
-                title = line.substring(2).trim();
-                bodyStartIndex = i + 1;
-            }
-            break;
-        }
-
-        let body = lines.slice(bodyStartIndex).join('\n');
-        if (body.startsWith('\n')) {
-            body = body.substring(1);
-        }
-        return { title, body };
+        // Edit mode no longer includes header in textarea,
+        // so content IS the body. Title is preserved from the component property.
+        return { title: this.title, body: content };
     }
 
     private _saveContent(shouldSave: boolean = false): void {
