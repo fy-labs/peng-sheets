@@ -4,6 +4,55 @@
  */
 
 import type { StructureSection, DocumentSection, WorkbookSection } from '../types';
+import * as yaml from 'js-yaml';
+
+/**
+ * Extract YAML frontmatter from markdown text.
+ * Returns the title and raw frontmatter content if frontmatter with a `title` field exists.
+ * Returns null if no frontmatter or no title field.
+ */
+export function extractFrontmatter(mdText: string): { title: string; content: string } | null {
+    const lines = mdText.split('\n');
+    if (lines.length === 0 || lines[0].trim() !== '---') {
+        return null;
+    }
+
+    // Find closing ---
+    let endIdx = -1;
+    for (let i = 1; i < lines.length; i++) {
+        if (lines[i].trim() === '---') {
+            endIdx = i;
+            break;
+        }
+    }
+    if (endIdx < 0) return null;
+
+    const yamlBlock = lines.slice(1, endIdx).join('\n');
+    try {
+        const parsed = yaml.load(yamlBlock) as Record<string, unknown> | null;
+        if (!parsed || typeof parsed !== 'object') return null;
+
+        const title = parsed.title;
+        if (!title || typeof title !== 'string') return null;
+
+        // Body content after frontmatter (until first H1 or EOF)
+        // Match VS Code markdown preview: never render YAML frontmatter block
+        const bodyLines: string[] = [];
+        for (let i = endIdx + 1; i < lines.length; i++) {
+            if (lines[i].startsWith('# ') && !lines[i].startsWith('## ')) {
+                break;
+            }
+            bodyLines.push(lines[i]);
+        }
+
+        return {
+            title: title.trim(),
+            content: bodyLines.join('\n').trim()
+        };
+    } catch {
+        return null;
+    }
+}
 
 /**
  * Extract document and workbook structure from markdown text.
