@@ -391,7 +391,28 @@ export function generateAndGetRange(context: EditorContext): UpdateResult {
     // Build rootMarker from workbook name or config
     const wbName = workbook?.name;
     const rootMarker = wbName ? `# ${wbName}` : (configDict.rootMarker ?? '# Workbook');
-    const [startLine, rawEndLine] = getWorkbookRange(mdText, rootMarker, sheetHeaderLevel);
+
+    // Use parser-detected range for virtual root workbooks (rootMarker not in text).
+    // For normal workbooks, use dynamic detection (parser values become stale after mutations).
+    let startLine: number;
+    let rawEndLine: number;
+    if (workbook?.startLine !== undefined && workbook?.endLine !== undefined) {
+        // Check if rootMarker actually exists in text
+        const lines = mdText.split('\n');
+        const rootInText = lines.some((line) => line.trim() === rootMarker);
+        if (rootInText) {
+            // Normal workbook: use dynamic detection
+            [startLine, rawEndLine] = getWorkbookRange(mdText, rootMarker, sheetHeaderLevel);
+        } else {
+            // Virtual root: workbook IS the entire file (no H1 boundary).
+            // Use parser startLine but endLine = EOF (parser endLine may not cover
+            // all H2 sections like doc sheets).
+            startLine = workbook.startLine;
+            rawEndLine = lines.length;
+        }
+    } else {
+        [startLine, rawEndLine] = getWorkbookRange(mdText, rootMarker, sheetHeaderLevel);
+    }
     const lines = mdText.split('\n');
 
     let endLine = rawEndLine;
