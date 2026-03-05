@@ -10,7 +10,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomTextEditorProvide
     private static activePanels: Map<string, vscode.WebviewPanel> = new Map();
     private static currentActiveUri: string | undefined;
 
-    constructor(private readonly context: vscode.ExtensionContext) {}
+    constructor(private readonly context: vscode.ExtensionContext) { }
 
     public static register(context: vscode.ExtensionContext): vscode.Disposable {
         const provider = new SpreadsheetEditorProvider(context);
@@ -49,13 +49,22 @@ export class SpreadsheetEditorProvider implements vscode.CustomTextEditorProvide
         webviewPanel: vscode.WebviewPanel,
         _token: vscode.CancellationToken
     ): Promise<void> {
-        // Setup initial content for the webview
+        // Allow the webview to load resources from:
+        // 1. Extension's own output directory
+        // 2. Extension's resources directory
+        // 3. The document's directory (for relative image paths)
+        // 4. All workspace folders
+        const localResourceRoots: vscode.Uri[] = [
+            vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview'),
+            vscode.Uri.joinPath(this.context.extensionUri, 'resources'),
+            vscode.Uri.file(document.uri.fsPath).with({ path: document.uri.path.replace(/\/[^/]+$/, '') })
+        ];
+        for (const folder of (vscode.workspace.workspaceFolders ?? [])) {
+            localResourceRoots.push(folder.uri);
+        }
         webviewPanel.webview.options = {
             enableScripts: true,
-            localResourceRoots: [
-                vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview'),
-                vscode.Uri.joinPath(this.context.extensionUri, 'resources')
-            ]
+            localResourceRoots
         };
         webviewPanel.webview.html = getWebviewContent(webviewPanel.webview, this.context, document);
 

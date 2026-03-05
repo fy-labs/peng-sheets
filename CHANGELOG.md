@@ -4,6 +4,10 @@ All notable changes to the "PengSheets" extension will be documented in this fil
 
 ## [Unreleased]
 
+### Added
+- Native image support in Document tabs with paste and drag-and-drop capabilities.
+- Integrated EasyMDE for enhanced Markdown editing in Document tabs.
+
 ## [1.2.1] - 2026-02-24
 
 ### Fixed

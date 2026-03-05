@@ -2,7 +2,7 @@
  * Styles for SpreadsheetDocumentView component
  */
 
-:host {
+spreadsheet-document-view {
     display: block;
     height: 100%;
     overflow: auto;
@@ -221,27 +221,20 @@
     margin: 1.5em 0;
 }
 
-/* Tables */
+/* Tables — match VS Code's standard Markdown preview */
 .output table {
     border-collapse: collapse;
-    width: 100%;
     margin: 1em 0;
 }
 
 .output th,
 .output td {
-    border: 1px solid var(--vscode-widget-border);
-    padding: 0.5em 0.75em;
-    text-align: left;
+    padding: 6px 13px;
+    border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
 }
 
 .output th {
-    background: var(--vscode-editor-selectionBackground);
-    font-weight: bold;
-}
-
-.output tr:nth-child(even) td {
-    background: var(--vscode-list-hoverBackground);
+    font-weight: 600;
 }
 
 /* Images */
