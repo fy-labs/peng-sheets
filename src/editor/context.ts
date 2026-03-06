@@ -120,7 +120,15 @@ export class EditorContext {
             workbookJson = augmentWorkbookMetadata(workbookJson, this.state.mdText, rootMarker, sheetHeaderLevel);
 
             // Extract structure
-            const structureJson = extractStructure(this.state.mdText, rootMarker);
+            // For virtual root workbooks (rootMarker not in text), pass parser range.
+            // For normal workbooks, let extractStructure find it dynamically
+            // (parser line values become stale after mutations).
+            const wb = this.state.workbook;
+            const isVirtualRoot = !this.state.mdText.split('\n').some((line) => line.trim() === rootMarker);
+            const structureJson =
+                isVirtualRoot && wb.startLine !== undefined
+                    ? extractStructure(this.state.mdText, rootMarker, wb.startLine, wb.endLine)
+                    : extractStructure(this.state.mdText, rootMarker);
             structure = JSON.parse(structureJson);
         }
 
@@ -192,7 +200,13 @@ export class EditorContext {
                 effectiveConfig = JSON.stringify(configWithRootMarker);
             }
 
-            const tabOrder = initializeTabOrderFromStructure(mdText, effectiveConfig, numSheets);
+            const tabOrder = initializeTabOrderFromStructure(
+                mdText,
+                effectiveConfig,
+                numSheets,
+                workbook.startLine,
+                workbook.endLine
+            );
 
             const metadata = { ...(workbook.metadata || {}), tab_order: tabOrder };
             workbook = new Workbook({ ...workbook, metadata });

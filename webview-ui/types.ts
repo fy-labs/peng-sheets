@@ -103,10 +103,12 @@ export interface TabDefinition {
     sheetIndex?: number;
     docIndex?: number; // Document section index for document tabs
     data?: SheetJSON | DocumentJSON | unknown;
+    /** Pinned tabs are immovable (not draggable). Used for root and frontmatter tabs. */
+    pinned?: boolean;
 }
 
 export interface StructureItem {
-    type: 'workbook' | 'document';
+    type: 'workbook' | 'document' | 'frontmatter';
     title?: string;
     content?: string;
 }

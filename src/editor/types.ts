@@ -217,7 +217,13 @@ export interface WorkbookSection {
     type: 'workbook';
 }
 
-export type StructureSection = DocumentSection | WorkbookSection;
+export interface FrontmatterSection {
+    type: 'frontmatter';
+    title: string;
+    content: string;
+}
+
+export type StructureSection = DocumentSection | WorkbookSection | FrontmatterSection;
 
 // =============================================================================
 // Editor Config

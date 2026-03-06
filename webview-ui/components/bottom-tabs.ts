@@ -14,6 +14,8 @@ export interface TabDefinition {
     sheetIndex?: number;
     documentIndex?: number;
     index: number;
+    /** Pinned tabs are immovable (not draggable). Used for root and frontmatter tabs. */
+    pinned?: boolean;
 }
 
 /**
@@ -180,14 +182,14 @@ export class BottomTabs extends LitElement {
             activeElement.blur();
         }
 
-        if (tab.type === 'add-sheet' || tab.type === 'root') return;
+        if (tab.type === 'add-sheet' || tab.type === 'root' || tab.pinned) return;
         if (this.editingIndex === index) return;
         this._dragCtrl.startPotentialDrag(e, index);
     }
 
     private _handleMouseMove(e: MouseEvent, index: number, tab: TabDefinition) {
         if (!this._dragCtrl.isDragging) return;
-        if (tab.type === 'add-sheet' || tab.type === 'root') return;
+        if (tab.type === 'add-sheet' || tab.type === 'root' || tab.pinned) return;
 
         const target = e.currentTarget as HTMLElement;
         this._dragCtrl.updateDropTarget(index, target, e.clientX);
@@ -226,14 +228,14 @@ export class BottomTabs extends LitElement {
             <div class="bottom-tabs-container">
                 <div class="bottom-tabs" @scroll="${this._handleScroll}">
                     ${this.tabs.map(
-                        (tab, index) => html`
+            (tab, index) => html`
                             <div
                                 class="tab-item ${this.activeIndex === index ? 'active' : ''} ${tab.type === 'add-sheet'
-                                    ? 'add-sheet-tab'
-                                    : ''} ${isDragging && sourceIndex === index ? 'dragging' : ''} ${targetIndex ===
-                                    index && targetSide === 'left'
-                                    ? 'drag-over-left'
-                                    : ''} ${targetIndex === index && targetSide === 'right' ? 'drag-over-right' : ''}"
+                    ? 'add-sheet-tab'
+                    : ''} ${isDragging && sourceIndex === index ? 'dragging' : ''} ${targetIndex ===
+                        index && targetSide === 'left'
+                        ? 'drag-over-left'
+                        : ''} ${targetIndex === index && targetSide === 'right' ? 'drag-over-right' : ''}"
                                 @mousedown="${(e: MouseEvent) => this._handleMouseDown(e, index, tab)}"
                                 @mousemove="${(e: MouseEvent) => this._handleMouseMove(e, index, tab)}"
                                 @mouseleave="${this._handleMouseLeave}"
@@ -245,7 +247,7 @@ export class BottomTabs extends LitElement {
                             >
                                 ${this._renderTabIcon(tab)}
                                 ${this.editingIndex === index
-                                    ? html`
+                    ? html`
                                           <input
                                               class="tab-input"
                                               .value="${tab.title}"
@@ -256,10 +258,10 @@ export class BottomTabs extends LitElement {
                                               @blur="${(e: FocusEvent) => this._handleInputBlur(e, index, tab)}"
                                           />
                                       `
-                                    : html` ${tab.type !== 'add-sheet' ? tab.title : ''} `}
+                    : html` ${tab.type !== 'add-sheet' ? tab.title : ''} `}
                             </div>
                         `
-                    )}
+        )}
                 </div>
                 <div class="scroll-indicator-right ${this._isScrollableRight ? 'visible' : ''}"></div>
             </div>
