@@ -157,6 +157,117 @@ This is the root doc.
             // Root content is preserved
             expect(result.content).toContain('This is the root doc.');
         });
+
+        it('should NOT insert extra blank lines under doc sheet header after cell edit', () => {
+            // Blueprint: Editing cell 0,0 in Sheet 1 should regenerate the markdown
+            // without adding extra blank lines between "## Document 1" and its content.
+            // Bug: generateAndGetRange was inserting an extra newline before doc sheet content.
+            const realMd = `---
+id: root
+title: root
+desc: ""
+updated: 1605266684036
+created: 1595961348801
+---
+
+This is the root doc.
+
+## Sheet 1
+
+### MyTable
+
+| Column 1 | Column 2 | Column 3 |
+| --- | --- | --- |
+|  | 200 |  |
+
+<!-- md-spreadsheet-sheet-metadata: {"layout": {"type": "pane", "id": "root", "tables": [0], "activeTableIndex": 0}} -->
+
+## Document 1
+
+`;
+            initializeWorkbook(realMd, DEFAULT_CONFIG);
+
+            const result = updateCell(0, 0, 0, 0, 'test');
+
+            expect(result.error).toBeUndefined();
+
+            const lines = result.content!.split('\n');
+            const docHeaderIdx = lines.findIndex(l => l === '## Document 1');
+            // Document 1 header must be present
+            expect(docHeaderIdx).toBeGreaterThan(-1);
+
+            // Count consecutive blank lines immediately after "## Document 1"
+            let blankCount = 0;
+            for (let i = docHeaderIdx + 1; i < lines.length; i++) {
+                if (lines[i] === '') blankCount++;
+                else break;
+            }
+
+            // At most 1 blank line after header (standard markdown paragraph spacing)
+            // Bug produces 2+ blank lines
+            expect(blankCount).toBeLessThanOrEqual(1);
+        });
+
+        it('should NOT accumulate blank lines on repeated cell edits', () => {
+            // Blueprint: Multiple sequential edits should not keep adding blank lines.
+            // Each edit regenerates the full file, so blank lines should remain stable.
+            const realMd = `---
+id: root
+title: root
+desc: ""
+updated: 1605266684036
+created: 1595961348801
+---
+
+This is the root doc.
+
+## Sheet 1
+
+### MyTable
+
+| Column 1 | Column 2 | Column 3 |
+| --- | --- | --- |
+|  | 200 |  |
+
+<!-- md-spreadsheet-sheet-metadata: {"layout": {"type": "pane", "id": "root", "tables": [0], "activeTableIndex": 0}} -->
+
+## Document 1
+
+test
+`;
+            initializeWorkbook(realMd, DEFAULT_CONFIG);
+
+            // Edit #1
+            const result1 = updateCell(0, 0, 0, 0, 'edit1');
+            expect(result1.error).toBeUndefined();
+
+            // Re-initialize with the output of edit #1 (simulates persisted file)
+            resetContext();
+            initializeWorkbook(result1.content!, DEFAULT_CONFIG);
+
+            // Edit #2
+            const result2 = updateCell(0, 0, 0, 0, 'edit2');
+            expect(result2.error).toBeUndefined();
+
+            const lines = result2.content!.split('\n');
+            const docHeaderIdx = lines.findIndex(l => l === '## Document 1');
+            expect(docHeaderIdx).toBeGreaterThan(-1);
+
+            // Count blank lines after Document 1 header
+            let blankCount = 0;
+            for (let i = docHeaderIdx + 1; i < lines.length; i++) {
+                if (lines[i] === '') blankCount++;
+                else break;
+            }
+
+            // Should still be at most 1 blank line, NOT accumulating
+            expect(blankCount).toBeLessThanOrEqual(1);
+
+            // "test" content should still be present (doc sheet body preserved)
+            expect(result2.content).toContain('test');
+            // No duplication
+            expect((result2.content!.match(/## Document 1/g) || []).length).toBe(1);
+        });
     });
 
     describe('Scenario B: Frontmatter + H1 headers', () => {

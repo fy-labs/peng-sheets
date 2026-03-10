@@ -431,7 +431,11 @@ export function generateAndGetRange(context: EditorContext): UpdateResult {
         }
     }
 
-    let content = newMd + '\n';
+    // Normalize consecutive blank lines: toMarkdown() may produce 3+ consecutive newlines
+    // (double blank lines) for doc sheets because the parser stores content with leading
+    // newlines. Collapse to max 2 consecutive newlines (= 1 blank line) to prevent
+    // accumulation on each parse-edit cycle. Then ensure single trailing newline.
+    let content = newMd.replace(/\n{3,}/g, '\n\n').replace(/\n+$/, '') + '\n';
 
     // Ensure empty line before appended content if file is not empty
     if (startLine >= lines.length && mdText) {
