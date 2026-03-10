@@ -967,6 +967,7 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                               <spreadsheet-document-view
                                   .title="${activeTab.title}"
                                   .content="${getSheetContent(activeTab.data as SheetJSON)}"
+                                  .headerText="${'#'.repeat((this.config as Record<string, number>)?.sheetHeaderLevel ?? 2)} ${activeTab.title}"
                                   .isDocSheet="${true}"
                                   .sheetIndex="${activeTab.sheetIndex}"
                                   @toolbar-action="${this._handleToolbarAction}"
@@ -991,6 +992,7 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                             <spreadsheet-document-view
                                 .title="${activeTab.title}"
                                 .content="${(activeTab.data as DocumentJSON).content}"
+                                .headerText="${activeTab.pinned ? activeTab.title : `# ${activeTab.title}`}"
                                 @toolbar-action="${this._handleToolbarAction}"
                             ></spreadsheet-document-view>
                         `
@@ -999,6 +1001,9 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                               <spreadsheet-document-view
                                   .title="${activeTab.title}"
                                   .content="${(activeTab.data as { type: 'root'; content: string })?.content ?? ''}"
+                                  .headerText="${this.markdownInput?.trimStart().startsWith('---')
+                                      ? (this.workbook?.name ?? activeTab.title)
+                                      : `# ${this.workbook?.name ?? activeTab.title}`}"
                                   .isRootTab="${true}"
                                   @toolbar-action="${this._handleToolbarAction}"
                                   @root-content-change="${this._handleRootContentChange}"
