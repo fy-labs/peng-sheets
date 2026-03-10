@@ -1419,7 +1419,10 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
      */
     private _generateUniqueSheetName(): string {
         const prefix = t('sheetNamePrefix');
-        const existingNames = this.tabs.filter((tab) => tab.type === 'sheet').map((tab) => tab.title);
+        // Count only spreadsheet sheets, NOT doc sheets (which also have type='sheet')
+        const existingNames = this.tabs
+            .filter((tab) => tab.type === 'sheet' && isSheetJSON(tab.data) && !isDocSheetType(tab.data as SheetJSON))
+            .map((tab) => tab.title);
         // Start from total count + 1 to avoid cross-language duplicates
         // (e.g., "Sheet 1" exists → next should be "シート 2", not "シート 1")
         let i = existingNames.length + 1;
@@ -1433,9 +1436,15 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
      */
     private _generateUniqueDocName(): string {
         const prefix = t('documentNamePrefix');
-        // Count only document-type tabs, NOT sheets
+        // Count only user-created document tabs, NOT pinned frontmatter or root tabs
         const docNames = this.tabs
-            .filter((tab) => tab.type === 'document' || (tab.type === 'sheet' && isDocumentJSON(tab.data)))
+            .filter((tab) => {
+                // Doc sheets within workbook (type='sheet' with doc content)
+                if (tab.type === 'sheet' && isSheetJSON(tab.data) && isDocSheetType(tab.data as SheetJSON)) return true;
+                // Standalone document sections (type='document'), but NOT pinned frontmatter tabs
+                if (tab.type === 'document' && !tab.pinned) return true;
+                return false;
+            })
             .map((tab) => tab.title);
         // Start from doc count + 1 to avoid cross-language duplicates
         let i = docNames.length + 1;
