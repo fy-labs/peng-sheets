@@ -895,3 +895,145 @@ export function moveWorkbookSection(
         file_changed: true
     };
 }
+
+// =============================================================================
+// Frontmatter Operations
+// =============================================================================
+
+/**
+ * Find the range of YAML frontmatter block and its body content.
+ * Returns null if no valid frontmatter is found.
+ *
+ * - yamlStart: line index of opening `---` (always 0)
+ * - yamlEnd: line index of closing `---`
+ * - bodyEnd: line index of first H1 header (or total lines if none)
+ */
+function getFrontmatterRange(lines: string[]): { yamlStart: number; yamlEnd: number; bodyEnd: number } | null {
+    if (lines.length === 0 || lines[0].trim() !== '---') {
+        return null;
+    }
+
+    // Find closing ---
+    let yamlEnd = -1;
+    for (let i = 1; i < lines.length; i++) {
+        if (lines[i].trim() === '---') {
+            yamlEnd = i;
+            break;
+        }
+    }
+    if (yamlEnd < 0) return null;
+
+    // Find first H1 (body extends from yamlEnd+1 to first H1 or EOF)
+    let bodyEnd = lines.length;
+    let inCodeBlock = false;
+    for (let i = yamlEnd + 1; i < lines.length; i++) {
+        if (lines[i].trim().startsWith('```')) inCodeBlock = !inCodeBlock;
+        if (!inCodeBlock && lines[i].startsWith('# ') && !lines[i].startsWith('## ')) {
+            bodyEnd = i;
+            break;
+        }
+    }
+
+    return { yamlStart: 0, yamlEnd, bodyEnd };
+}
+
+/**
+ * Update the body content of the frontmatter section.
+ * The body is the text between the closing `---` and the first H1 header.
+ */
+export function updateFrontmatterContent(context: EditorContext, content: string): UpdateResult {
+    const lines = context.mdText.split('\n');
+    const range = getFrontmatterRange(lines);
+    if (!range) {
+        return { error: 'No frontmatter found' };
+    }
+
+    const { yamlEnd, bodyEnd } = range;
+
+    // Build new body: blank line after ---, content, blank line before H1
+    // \n\n after --- creates a blank line separator; \n\n before H1 creates blank line before heading
+    const body = content.trim() ? '\n\n' + content.trimEnd() + '\n\n' : '\n\n';
+
+    // Replace lines between yamlEnd (inclusive of ---) and bodyEnd
+    const beforeLines = lines.slice(0, yamlEnd + 1); // includes the closing ---
+    const afterLines = lines.slice(bodyEnd);
+    const newMdText = beforeLines.join('\n') + body + afterLines.join('\n');
+    context.mdText = newMdText;
+
+    return {
+        content: newMdText,
+        startLine: 0,
+        endLine: lines.length - 1,
+        file_changed: true
+    };
+}
+
+/**
+ * Rename the frontmatter title field.
+ * Updates the `title:` value in the YAML frontmatter block.
+ */
+export function renameFrontmatterTitle(context: EditorContext, newTitle: string): UpdateResult {
+    const lines = context.mdText.split('\n');
+    const range = getFrontmatterRange(lines);
+    if (!range) {
+        return { error: 'No frontmatter found' };
+    }
+
+    const { yamlEnd } = range;
+
+    // Find and replace the title line within the YAML block
+    let titleFound = false;
+    for (let i = 1; i < yamlEnd; i++) {
+        const match = lines[i].match(/^title:\s*/);
+        if (match) {
+            lines[i] = `title: ${newTitle}`;
+            titleFound = true;
+            break;
+        }
+    }
+
+    if (!titleFound) {
+        return { error: 'No title field found in frontmatter' };
+    }
+
+    const newMdText = lines.join('\n');
+    context.mdText = newMdText;
+
+    return {
+        content: newMdText,
+        startLine: 0,
+        endLine: lines.length - 1,
+        file_changed: true
+    };
+}
+
+/**
+ * Delete the frontmatter section entirely.
+ * Removes the YAML `---` block and all body content up to the first H1 header.
+ */
+export function deleteFrontmatter(context: EditorContext): UpdateResult {
+    const lines = context.mdText.split('\n');
+    const range = getFrontmatterRange(lines);
+    if (!range) {
+        return { error: 'No frontmatter found' };
+    }
+
+    const { bodyEnd } = range;
+
+    // Remove everything from start to bodyEnd
+    const afterLines = lines.slice(bodyEnd);
+    // Strip leading blank lines from the remaining content
+    let startIdx = 0;
+    while (startIdx < afterLines.length && afterLines[startIdx].trim() === '') {
+        startIdx++;
+    }
+    const newMdText = afterLines.slice(startIdx).join('\n');
+    context.mdText = newMdText;
+
+    return {
+        content: newMdText,
+        startLine: 0,
+        endLine: lines.length - 1,
+        file_changed: true
+    };
+}

@@ -611,6 +611,20 @@ export class SpreadsheetService {
         return editor.getDocumentSectionRange(docIndex);
     }
 
+    // --- Frontmatter Operations ---
+
+    public updateFrontmatterContent(content: string) {
+        this._performAction(() => editor.updateFrontmatterContent(content));
+    }
+
+    public renameFrontmatterTitle(newTitle: string) {
+        this._performAction(() => editor.renameFrontmatterTitle(newTitle));
+    }
+
+    public deleteFrontmatter() {
+        this._performAction(() => editor.deleteFrontmatter());
+    }
+
     // --- Workbook Initialization ---
 
     public async initializeWorkbook(mdText: string, config: unknown) {

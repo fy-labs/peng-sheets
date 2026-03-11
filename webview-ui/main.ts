@@ -641,12 +641,9 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
             return;
         }
 
-        // Use the docIndex tracked when the tab was created
+        // Pinned frontmatter tab: use frontmatter-specific API
         const docIndex = activeTab.docIndex;
-        if (docIndex === undefined) {
-            console.error('Document tab missing docIndex');
-            return;
-        }
+        const isFrontmatterTab = activeTab.pinned && docIndex === undefined;
 
         try {
             // Use title from event (may have been edited) or fall back to existing
@@ -655,7 +652,11 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
             // Use SpreadsheetService for unified handling (same pattern as DocSheet)
             // This handles batch processing and content formatting internally
             this.spreadsheetService.startBatch();
-            this.spreadsheetService.updateDocumentContent(docIndex, newTitle, detail.content);
+            if (isFrontmatterTab) {
+                this.spreadsheetService.updateFrontmatterContent(detail.content);
+            } else if (docIndex !== undefined) {
+                this.spreadsheetService.updateDocumentContent(docIndex, newTitle, detail.content);
+            }
             this.spreadsheetService.endBatch();
 
             // Update local state including title
@@ -962,18 +963,20 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                 : html``}
             <div class="content-area">
                 ${activeTab.type === 'sheet' && isSheetJSON(activeTab.data)
-                ? isDocSheetType(activeTab.data as SheetJSON)
-                    ? html`
+                    ? isDocSheetType(activeTab.data as SheetJSON)
+                        ? html`
                               <spreadsheet-document-view
                                   .title="${activeTab.title}"
                                   .content="${getSheetContent(activeTab.data as SheetJSON)}"
-                                  .headerText="${'#'.repeat((this.config as Record<string, number>)?.sheetHeaderLevel ?? 2)} ${activeTab.title}"
+                                  .headerText="${'#'.repeat(
+                                      (this.config as Record<string, number>)?.sheetHeaderLevel ?? 2
+                                  )} ${activeTab.title}"
                                   .isDocSheet="${true}"
                                   .sheetIndex="${activeTab.sheetIndex}"
                                   @toolbar-action="${this._handleToolbarAction}"
                               ></spreadsheet-document-view>
                           `
-                    : html`
+                        : html`
                               <div class="sheet-container" style="height: 100%">
                                   <layout-container
                                       .layout="${(activeTab.data as SheetJSON).metadata?.layout}"
@@ -981,14 +984,14 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                                       .sheetIndex="${activeTab.sheetIndex}"
                                       .workbook="${this.workbook}"
                                       .dateFormat="${((this.config?.validation as Record<string, unknown>)
-                            ?.dateFormat as string) || 'YYYY-MM-DD'}"
+                                          ?.dateFormat as string) || 'YYYY-MM-DD'}"
                                       @save-requested="${this._handleSave}"
                                       @selection-change="${this._handleSelectionChange}"
                                   ></layout-container>
                               </div>
                           `
-                : activeTab.type === 'document' && isDocumentJSON(activeTab.data)
-                    ? html`
+                    : activeTab.type === 'document' && isDocumentJSON(activeTab.data)
+                      ? html`
                             <spreadsheet-document-view
                                 .title="${activeTab.title}"
                                 .content="${(activeTab.data as DocumentJSON).content}"
@@ -996,7 +999,7 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                                 @toolbar-action="${this._handleToolbarAction}"
                             ></spreadsheet-document-view>
                         `
-                    : activeTab.type === 'root'
+                      : activeTab.type === 'root'
                         ? html`
                               <spreadsheet-document-view
                                   .title="${activeTab.title}"
@@ -1011,12 +1014,12 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                           `
                         : html``}
                 ${activeTab.type === 'onboarding'
-                ? html`
+                    ? html`
                           <spreadsheet-onboarding
                               @create-spreadsheet="${this._onCreateSpreadsheet}"
                           ></spreadsheet-onboarding>
                       `
-                : html``}
+                    : html``}
             </div>
 
             <bottom-tabs
@@ -1025,17 +1028,17 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                 .editingIndex="${this.editingTabIndex}"
                 @tab-select="${(e: CustomEvent) => (this.activeTabIndex = e.detail.index)}"
                 @tab-edit-start="${(e: CustomEvent) =>
-                this._handleTabDoubleClick(e.detail.index, this.tabs[e.detail.index])}"
+                    this._handleTabDoubleClick(e.detail.index, this.tabs[e.detail.index])}"
                 @tab-rename="${(e: CustomEvent) =>
-                this._handleTabRename(e.detail.index, e.detail.tab, e.detail.newName)}"
+                    this._handleTabRename(e.detail.index, e.detail.tab, e.detail.newName)}"
                 @tab-context-menu="${(e: CustomEvent) => {
-                this.tabContextMenu = {
-                    x: e.detail.x,
-                    y: e.detail.y,
-                    index: e.detail.index,
-                    tabType: e.detail.tabType
-                };
-            }}"
+                    this.tabContextMenu = {
+                        x: e.detail.x,
+                        y: e.detail.y,
+                        index: e.detail.index,
+                        tabType: e.detail.tabType
+                    };
+                }}"
                 @tab-reorder="${(e: CustomEvent) => this._handleTabReorder(e.detail.fromIndex, e.detail.toIndex)}"
                 @add-sheet-click="${this._handleAddSheet}"
             ></bottom-tabs>
@@ -1047,14 +1050,14 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                 .tabType="${this.tabContextMenu?.tabType ?? 'sheet'}"
                 @rename="${() => this._renameTab(this.tabContextMenu!.index)}"
                 @delete="${() => {
-                if (this.tabContextMenu?.tabType === 'sheet') {
-                    this._deleteSheet(this.tabContextMenu.index);
-                } else if (this.tabContextMenu?.tabType === 'root') {
-                    this._deleteRootContent(this.tabContextMenu.index);
-                } else {
-                    this._deleteDocument(this.tabContextMenu!.index);
-                }
-            }}"
+                    if (this.tabContextMenu?.tabType === 'sheet') {
+                        this._deleteSheet(this.tabContextMenu.index);
+                    } else if (this.tabContextMenu?.tabType === 'root') {
+                        this._deleteRootContent(this.tabContextMenu.index);
+                    } else {
+                        this._deleteDocument(this.tabContextMenu!.index);
+                    }
+                }}"
                 @add-document="${this._addDocumentFromMenu}"
                 @add-sheet="${this._addSheetFromMenu}"
                 @close="${() => (this.tabContextMenu = null)}"
@@ -1064,29 +1067,30 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
             <confirmation-modal
                 .open="${this.confirmDeleteIndex !== null}"
                 title="${this.confirmDeleteIndex !== null && this.tabs[this.confirmDeleteIndex]?.type === 'document'
-                ? t('deleteDocument')
-                : this.confirmDeleteIndex !== null && this.tabs[this.confirmDeleteIndex]?.type === 'root'
-                    ? t('deleteOverviewTab')
-                    : t('deleteSheet')}"
+                    ? t('deleteDocument')
+                    : this.confirmDeleteIndex !== null && this.tabs[this.confirmDeleteIndex]?.type === 'root'
+                      ? t('deleteOverviewTab')
+                      : t('deleteSheet')}"
                 confirmLabel="${t('delete')}"
                 cancelLabel="${t('cancel')}"
                 @confirm="${this._performDelete}"
                 @cancel="${this._cancelDelete}"
             >
                 ${unsafeHTML(
-                        this.confirmDeleteIndex !== null && this.tabs[this.confirmDeleteIndex]?.type === 'root'
-                            ? t('deleteOverviewTabConfirm')
-                            : t(
-                                this.confirmDeleteIndex !== null &&
-                                    this.tabs[this.confirmDeleteIndex]?.type === 'document'
-                                    ? 'deleteDocumentConfirm'
-                                    : 'deleteSheetConfirm',
-                                `<span style="color: var(--vscode-textPreformat-foreground);">${this.confirmDeleteIndex !== null
-                                    ? this.tabs[this.confirmDeleteIndex]?.title?.replace(/</g, '&lt;')
-                                    : ''
-                                }</span>`
-                            )
-                    )}
+                    this.confirmDeleteIndex !== null && this.tabs[this.confirmDeleteIndex]?.type === 'root'
+                        ? t('deleteOverviewTabConfirm')
+                        : t(
+                              this.confirmDeleteIndex !== null &&
+                                  this.tabs[this.confirmDeleteIndex]?.type === 'document'
+                                  ? 'deleteDocumentConfirm'
+                                  : 'deleteSheetConfirm',
+                              `<span style="color: var(--vscode-textPreformat-foreground);">${
+                                  this.confirmDeleteIndex !== null
+                                      ? this.tabs[this.confirmDeleteIndex]?.title?.replace(/</g, '&lt;')
+                                      : ''
+                              }</span>`
+                          )
+                )}
             </confirmation-modal>
 
             <add-tab-dropdown
@@ -1132,8 +1136,8 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
     private _deleteDocument(index: number) {
         this.tabContextMenu = null;
         const tab = this.tabs[index];
-        if (tab && tab.type === 'document' && typeof tab.docIndex === 'number') {
-            // Trigger modal for document deletion
+        if (tab && tab.type === 'document') {
+            // Trigger modal for document deletion (regular + pinned frontmatter)
             this.confirmDeleteIndex = index;
         }
     }
@@ -1314,6 +1318,9 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
         const tab = this.tabs[index];
         if (tab && tab.type === 'sheet' && typeof tab.sheetIndex === 'number') {
             this.spreadsheetService.deleteSheet(tab.sheetIndex);
+        } else if (tab && tab.type === 'document' && tab.pinned && tab.docIndex === undefined) {
+            // Pinned frontmatter tab: delete YAML block + body up to first H1
+            this.spreadsheetService.deleteFrontmatter();
         } else if (tab && tab.type === 'document' && typeof tab.docIndex === 'number') {
             this.spreadsheetService.deleteDocument(tab.docIndex);
         } else if (tab && tab.type === 'root') {
@@ -1329,6 +1336,9 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
 
         if (tab.type === 'sheet' && typeof tab.sheetIndex === 'number') {
             this.spreadsheetService.renameSheet(tab.sheetIndex, newName);
+        } else if (tab.type === 'document' && tab.pinned && tab.docIndex === undefined) {
+            // Pinned frontmatter tab: rename YAML title field
+            this.spreadsheetService.renameFrontmatterTitle(newName);
         } else if (tab.type === 'document' && typeof tab.docIndex === 'number') {
             this.spreadsheetService.renameDocument(tab.docIndex, newName);
         } else if (tab.type === 'root') {
@@ -1545,7 +1555,9 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                         data: { type: 'document', title: frontmatter.title, content: frontmatter.content }
                     });
                     // Re-index all tabs after unshift
-                    newTabs.forEach((tab, idx) => { tab.index = idx; });
+                    newTabs.forEach((tab, idx) => {
+                        tab.index = idx;
+                    });
                 }
             }
 
