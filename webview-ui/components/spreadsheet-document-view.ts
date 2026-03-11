@@ -24,6 +24,10 @@ export class SpreadsheetDocumentView extends LitElement {
     @property({ type: Boolean })
     isRootTab: boolean = false;
 
+    /** Raw markdown header text (e.g. "## Doc 1") or plain title for frontmatter */
+    @property({ type: String })
+    headerText: string = '';
+
     @property({ type: Number })
     sheetIndex: number = 0;
 
@@ -184,7 +188,8 @@ export class SpreadsheetDocumentView extends LitElement {
         return html`
             <div class="container">
                 ${this._isEditing
-                ? html`
+                    ? html`
+                          ${this.headerText ? html`<div class="header-field">${this.headerText}</div>` : html``}
                           <div class="edit-container">
                               <div class="edit-hint visible">${t('pressEscapeToCancel')}</div>
                               <textarea
@@ -204,7 +209,7 @@ export class SpreadsheetDocumentView extends LitElement {
                               Save
                           </button>
                       `
-                : html`
+                    : html`
                           <div class="output" @click=${this._enterEditMode}>
                               ${unsafeHTML(this._getRenderedContent())}
                           </div>

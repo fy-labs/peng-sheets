@@ -207,6 +207,7 @@
         "@open-wc/testing": "^4.0.0",
         "@testing-library/dom": "^10.4.1",
         "@types/glob": "^8.1.0",
+        "@types/js-yaml": "^4.0.9",
         "@types/marked": "^5.0.2",
         "@types/mocha": "^10.0.6",
         "@types/node": "20.x",
@@ -239,6 +240,7 @@
         "vitest": "^4.0.15"
     },
     "dependencies": {
-        "md-spreadsheet-parser": "^1.3.1"
+        "js-yaml": "^4.1.1",
+        "md-spreadsheet-parser": "^1.4.3"
     }
 }

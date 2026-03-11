@@ -16,6 +16,7 @@ export type {
     StructureSection,
     DocumentSection,
     WorkbookSection,
+    FrontmatterSection,
     NumberFormat,
     ColumnFormat,
     ColumnMetadata,
@@ -33,3 +34,6 @@ export type {
 
 // Export context class for advanced usage
 export { EditorContext, getEditorContext } from './context';
+
+// Export structure utilities
+export { extractFrontmatter } from './utils/structure';
