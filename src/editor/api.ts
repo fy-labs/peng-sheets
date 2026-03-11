@@ -502,6 +502,27 @@ export function moveWorkbookSection(
     return documentService.moveWorkbookSection(getContext(), toDocIndex, toAfterDoc, toBeforeDoc, targetTabOrderIndex);
 }
 
+/**
+ * Update frontmatter body content (text between --- and first H1).
+ */
+export function updateFrontmatterContent(content: string): UpdateResult {
+    return documentService.updateFrontmatterContent(getContext(), content);
+}
+
+/**
+ * Rename frontmatter title field.
+ */
+export function renameFrontmatterTitle(newTitle: string): UpdateResult {
+    return documentService.renameFrontmatterTitle(getContext(), newTitle);
+}
+
+/**
+ * Delete frontmatter section (YAML block + body up to first H1).
+ */
+export function deleteFrontmatter(): UpdateResult {
+    return documentService.deleteFrontmatter(getContext());
+}
+
 // =============================================================================
 // Utility Functions
 // =============================================================================

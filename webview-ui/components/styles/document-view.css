@@ -21,6 +21,18 @@ spreadsheet-document-view {
     flex-direction: column;
 }
 
+/* Read-only header field */
+.header-field {
+    padding: 0.6rem 0.5rem;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 1.25em;
+    font-weight: bold;
+    color: var(--vscode-editor-foreground);
+    border-bottom: 1px solid var(--vscode-widget-border);
+    user-select: text;
+    flex-shrink: 0;
+}
+
 /* Rendered output */
 .output {
     margin: 0 0.5rem;
@@ -62,7 +74,7 @@ spreadsheet-document-view {
 .editor {
     flex: 1;
     min-height: 400px;
-    margin: 1.2rem 0.5rem;
+    margin: 0 0.5rem 1.2rem 0.5rem;
     padding: 0.5rem;
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: var(--vscode-editor-font-size, 13px);

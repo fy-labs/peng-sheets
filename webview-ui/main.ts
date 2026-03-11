@@ -641,12 +641,9 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
             return;
         }
 
-        // Use the docIndex tracked when the tab was created
+        // Pinned frontmatter tab: use frontmatter-specific API
         const docIndex = activeTab.docIndex;
-        if (docIndex === undefined) {
-            console.error('Document tab missing docIndex');
-            return;
-        }
+        const isFrontmatterTab = activeTab.pinned && docIndex === undefined;
 
         try {
             // Use title from event (may have been edited) or fall back to existing
@@ -655,7 +652,11 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
             // Use SpreadsheetService for unified handling (same pattern as DocSheet)
             // This handles batch processing and content formatting internally
             this.spreadsheetService.startBatch();
-            this.spreadsheetService.updateDocumentContent(docIndex, newTitle, detail.content);
+            if (isFrontmatterTab) {
+                this.spreadsheetService.updateFrontmatterContent(detail.content);
+            } else if (docIndex !== undefined) {
+                this.spreadsheetService.updateDocumentContent(docIndex, newTitle, detail.content);
+            }
             this.spreadsheetService.endBatch();
 
             // Update local state including title
@@ -967,6 +968,9 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                               <spreadsheet-document-view
                                   .title="${activeTab.title}"
                                   .content="${getSheetContent(activeTab.data as SheetJSON)}"
+                                  .headerText="${'#'.repeat(
+                                      (this.config as Record<string, number>)?.sheetHeaderLevel ?? 2
+                                  )} ${activeTab.title}"
                                   .isDocSheet="${true}"
                                   .sheetIndex="${activeTab.sheetIndex}"
                                   @toolbar-action="${this._handleToolbarAction}"
@@ -991,6 +995,7 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                             <spreadsheet-document-view
                                 .title="${activeTab.title}"
                                 .content="${(activeTab.data as DocumentJSON).content}"
+                                .headerText="${activeTab.pinned ? activeTab.title : `# ${activeTab.title}`}"
                                 @toolbar-action="${this._handleToolbarAction}"
                             ></spreadsheet-document-view>
                         `
@@ -999,6 +1004,9 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                               <spreadsheet-document-view
                                   .title="${activeTab.title}"
                                   .content="${(activeTab.data as { type: 'root'; content: string })?.content ?? ''}"
+                                  .headerText="${this.markdownInput?.trimStart().startsWith('---')
+                                      ? (this.workbook?.name ?? activeTab.title)
+                                      : `# ${this.workbook?.name ?? activeTab.title}`}"
                                   .isRootTab="${true}"
                                   @toolbar-action="${this._handleToolbarAction}"
                                   @root-content-change="${this._handleRootContentChange}"
@@ -1127,8 +1135,8 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
     private _deleteDocument(index: number) {
         this.tabContextMenu = null;
         const tab = this.tabs[index];
-        if (tab && tab.type === 'document' && typeof tab.docIndex === 'number') {
-            // Trigger modal for document deletion
+        if (tab && tab.type === 'document') {
+            // Trigger modal for document deletion (regular + pinned frontmatter)
             this.confirmDeleteIndex = index;
         }
     }
@@ -1309,6 +1317,9 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
         const tab = this.tabs[index];
         if (tab && tab.type === 'sheet' && typeof tab.sheetIndex === 'number') {
             this.spreadsheetService.deleteSheet(tab.sheetIndex);
+        } else if (tab && tab.type === 'document' && tab.pinned && tab.docIndex === undefined) {
+            // Pinned frontmatter tab: delete YAML block + body up to first H1
+            this.spreadsheetService.deleteFrontmatter();
         } else if (tab && tab.type === 'document' && typeof tab.docIndex === 'number') {
             this.spreadsheetService.deleteDocument(tab.docIndex);
         } else if (tab && tab.type === 'root') {
@@ -1324,6 +1335,9 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
 
         if (tab.type === 'sheet' && typeof tab.sheetIndex === 'number') {
             this.spreadsheetService.renameSheet(tab.sheetIndex, newName);
+        } else if (tab.type === 'document' && tab.pinned && tab.docIndex === undefined) {
+            // Pinned frontmatter tab: rename YAML title field
+            this.spreadsheetService.renameFrontmatterTitle(newName);
         } else if (tab.type === 'document' && typeof tab.docIndex === 'number') {
             this.spreadsheetService.renameDocument(tab.docIndex, newName);
         } else if (tab.type === 'root') {
@@ -1414,7 +1428,10 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
      */
     private _generateUniqueSheetName(): string {
         const prefix = t('sheetNamePrefix');
-        const existingNames = this.tabs.filter((tab) => tab.type === 'sheet').map((tab) => tab.title);
+        // Count only spreadsheet sheets, NOT doc sheets (which also have type='sheet')
+        const existingNames = this.tabs
+            .filter((tab) => tab.type === 'sheet' && isSheetJSON(tab.data) && !isDocSheetType(tab.data as SheetJSON))
+            .map((tab) => tab.title);
         // Start from total count + 1 to avoid cross-language duplicates
         // (e.g., "Sheet 1" exists → next should be "シート 2", not "シート 1")
         let i = existingNames.length + 1;
@@ -1428,9 +1445,15 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
      */
     private _generateUniqueDocName(): string {
         const prefix = t('documentNamePrefix');
-        // Count only document-type tabs, NOT sheets
+        // Count only user-created document tabs, NOT pinned frontmatter or root tabs
         const docNames = this.tabs
-            .filter((tab) => tab.type === 'document' || (tab.type === 'sheet' && isDocumentJSON(tab.data)))
+            .filter((tab) => {
+                // Doc sheets within workbook (type='sheet' with doc content)
+                if (tab.type === 'sheet' && isSheetJSON(tab.data) && isDocSheetType(tab.data as SheetJSON)) return true;
+                // Standalone document sections (type='document'), but NOT pinned frontmatter tabs
+                if (tab.type === 'document' && !tab.pinned) return true;
+                return false;
+            })
             .map((tab) => tab.title);
         // Start from doc count + 1 to avoid cross-language duplicates
         let i = docNames.length + 1;
@@ -1480,6 +1503,7 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                             type: 'root',
                             title: rootTabName,
                             index: newTabs.length,
+                            pinned: true,
                             data: { type: 'root', content: rootContent }
                         });
                     }
@@ -1502,6 +1526,37 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                             index: newTabs.length
                         });
                     }
+                }
+            }
+
+            // Detect frontmatter Document tab (Scenario B):
+            // Only when frontmatter has title AND actual H1 headers exist in text.
+            // For Scenario A (virtual root, no H1), frontmatter content is already
+            // in workbook.rootContent → Overview tab, so no separate tab is needed.
+            const textLines = this.markdownInput.split('\n');
+            let hasActualH1 = false;
+            let inCB = false;
+            for (const line of textLines) {
+                if (line.trim().startsWith('```')) inCB = !inCB;
+                if (!inCB && line.startsWith('# ') && !line.startsWith('## ')) {
+                    hasActualH1 = true;
+                    break;
+                }
+            }
+            if (hasActualH1) {
+                const frontmatter = editor.extractFrontmatter(this.markdownInput);
+                if (frontmatter) {
+                    newTabs.unshift({
+                        type: 'document',
+                        title: frontmatter.title,
+                        index: 0,
+                        pinned: true,
+                        data: { type: 'document', title: frontmatter.title, content: frontmatter.content }
+                    });
+                    // Re-index all tabs after unshift
+                    newTabs.forEach((tab, idx) => {
+                        tab.index = idx;
+                    });
                 }
             }
 
@@ -1532,8 +1587,8 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
             if (tabOrder && tabOrder.length > 0) {
                 const reorderedTabs: TabDefinition[] = [];
 
-                // Extract root tab first - it's always at position 0
-                const rootTab = newTabs.find((t) => t.type === 'root');
+                // Extract pinned tabs (root, frontmatter) - always at the beginning
+                const pinnedTabs = newTabs.filter((t) => t.pinned);
 
                 for (const orderItem of tabOrder) {
                     let matchedTab: TabDefinition | undefined;
@@ -1541,7 +1596,9 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                     if (orderItem.type === 'sheet') {
                         matchedTab = newTabs.find((t) => t.type === 'sheet' && t.sheetIndex === orderItem.index);
                     } else if (orderItem.type === 'document') {
-                        matchedTab = newTabs.find((t) => t.type === 'document' && t.docIndex === orderItem.index);
+                        matchedTab = newTabs.find(
+                            (t) => t.type === 'document' && !t.pinned && t.docIndex === orderItem.index
+                        );
                     }
 
                     if (matchedTab) {
@@ -1550,21 +1607,21 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                 }
 
                 // Add any tabs not in tab_order (onboarding, etc.) at the end
-                // EXCEPT add-sheet which should always be last, and root which is always first
+                // EXCEPT add-sheet which should always be last, and pinned tabs which are always first
                 let addSheetTab: TabDefinition | undefined;
                 for (const tab of newTabs) {
                     if (!reorderedTabs.includes(tab)) {
                         if (tab.type === 'add-sheet') {
                             addSheetTab = tab;
-                        } else if (tab.type !== 'root') {
+                        } else if (!tab.pinned) {
                             reorderedTabs.push(tab);
                         }
                     }
                 }
 
-                // Insert root tab at the very beginning
-                if (rootTab) {
-                    reorderedTabs.unshift(rootTab);
+                // Insert pinned tabs at the very beginning (in order)
+                for (let i = pinnedTabs.length - 1; i >= 0; i--) {
+                    reorderedTabs.unshift(pinnedTabs[i]);
                 }
                 // Always add add-sheet at the very end
                 if (addSheetTab) {

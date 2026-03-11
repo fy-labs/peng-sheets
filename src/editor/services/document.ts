@@ -46,10 +46,7 @@ export function getDocumentSectionRange(
     sectionIndex: number
 ): { startLine: number; endLine: number } | { error: string } {
     const mdText = context.mdText;
-    const configDict: EditorConfig = context.config ? JSON.parse(context.config) : {};
-    // workbook.name is just the name without the # prefix, so we need to add it
-    const wbName = context.workbook?.name;
-    const rootMarker = wbName ? `# ${wbName}` : (configDict.rootMarker ?? '# Workbook');
+    const [wbStart, wbEnd] = getWorkbookRangeFromContext(context);
 
     const lines = mdText.split('\n');
     let docIdx = 0;
@@ -62,17 +59,19 @@ export function getDocumentSectionRange(
             inCodeBlock = !inCodeBlock;
         }
 
-        if (!inCodeBlock && line.startsWith('# ') && !line.startsWith('## ')) {
-            const stripped = line.trim();
-
-            // If we were tracking a document and hit ANY level-1 header, end it here
+        // Skip lines within the workbook range
+        if (i >= wbStart && i < wbEnd) {
+            // If we were tracking a document that ends at workbook start
             if (currentDocStart !== null) {
                 return { startLine: currentDocStart, endLine: i };
             }
+            continue;
+        }
 
-            if (stripped === rootMarker) {
-                // Workbook section - not a document, skip
-                continue;
+        if (!inCodeBlock && line.startsWith('# ') && !line.startsWith('## ')) {
+            // If we were tracking a document and hit another H1, end it here
+            if (currentDocStart !== null) {
+                return { startLine: currentDocStart, endLine: i };
             }
 
             // Found a document section
@@ -105,9 +104,6 @@ export function addDocument(
     insertAfterTabOrderIndex = -1
 ): UpdateResult {
     const mdText = context.mdText;
-    const configDict: EditorConfig = context.config ? JSON.parse(context.config) : {};
-    const wbName = context.workbook?.name;
-    const rootMarker = wbName ? `# ${wbName}` : (configDict.rootMarker ?? '# Workbook');
 
     const lines = mdText.split('\n');
     // Python uses insertLine = 0 by default (insert at beginning)
@@ -124,6 +120,9 @@ export function addDocument(
         insertLine = wbEnd;
         // No need to search for document positions - insert at workbook end
     } else {
+        // Get workbook range for exclusion
+        const [wbStart, wbEnd] = getWorkbookRangeFromContext(context);
+
         // Parse the structure to find insertion point
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
@@ -131,18 +130,21 @@ export function addDocument(
                 inCodeBlock = !inCodeBlock;
             }
 
-            if (!inCodeBlock && line.startsWith('# ') && !line.startsWith('## ')) {
-                const stripped = line.trim();
-                if (stripped === rootMarker) {
-                    // Workbook found - skip it (not inserting after workbook)
-                    continue;
-                }
+            // Skip lines within the workbook range
+            if (i >= wbStart && i < wbEnd) {
+                continue;
+            }
 
+            if (!inCodeBlock && line.startsWith('# ') && !line.startsWith('## ')) {
                 // Document found
                 if (afterDocIndex >= 0 && docCount === afterDocIndex) {
                     // Find end of this document
                     let nextI = i + 1;
                     while (nextI < lines.length) {
+                        // Skip workbook range
+                        if (nextI >= wbStart && nextI < wbEnd) {
+                            break;
+                        }
                         const nextLine = lines[nextI];
                         if (nextLine.trim().startsWith('```')) {
                             inCodeBlock = !inCodeBlock;
@@ -557,15 +559,12 @@ export function moveDocumentSection(
                     inCodeBlock = !inCodeBlock;
                 }
                 if (!inCodeBlock && line.startsWith('# ') && !line.startsWith('## ')) {
-                    const stripped = line.trim();
-                    if (stripped !== rootMarker) {
-                        if (docIdx === toDocIndex) {
-                            insertLine = i;
-                            foundTarget = true;
-                            break;
-                        }
-                        docIdx++;
+                    if (docIdx === toDocIndex) {
+                        insertLine = i;
+                        foundTarget = true;
+                        break;
                     }
+                    docIdx++;
                 }
             }
             if (!foundTarget) {
@@ -620,35 +619,41 @@ export function moveDocumentSection(
             // Find the document at position (adjustedToDocIndex - 1) and get its END
             const targetDocIdx = adjustedToDocIndex - 1;
 
+            // Get workbook range once (outside loop)
+            const tempText2 = linesWithoutDoc.join('\n');
+            const [tempWbStart2, tempWbEnd2] = getWorkbookRange(tempText2, rootMarker, sheetHeaderLevel);
+
             for (let i = 0; i < linesWithoutDoc.length; i++) {
                 const line = linesWithoutDoc[i];
                 if (line.trim().startsWith('```')) {
                     inCodeBlock = !inCodeBlock;
                 }
 
+                // Skip workbook range
+                if (i >= tempWbStart2 && i < tempWbEnd2) {
+                    continue;
+                }
+
                 if (!inCodeBlock && line.startsWith('# ') && !line.startsWith('## ')) {
-                    const stripped = line.trim();
-                    if (stripped !== rootMarker) {
-                        if (docIdx === targetDocIdx) {
-                            // Found the target doc - now find its END (next H1 or EOF)
-                            let endLine = linesWithoutDoc.length;
-                            let endCodeBlock = false;
-                            for (let j = i + 1; j < linesWithoutDoc.length; j++) {
-                                const nextLine = linesWithoutDoc[j];
-                                if (nextLine.trim().startsWith('```')) {
-                                    endCodeBlock = !endCodeBlock;
-                                }
-                                if (!endCodeBlock && nextLine.startsWith('# ') && !nextLine.startsWith('## ')) {
-                                    endLine = j;
-                                    break;
-                                }
+                    if (docIdx === targetDocIdx) {
+                        // Found the target doc - now find its END (next H1 or EOF)
+                        let endLine = linesWithoutDoc.length;
+                        let endCodeBlock = false;
+                        for (let j = i + 1; j < linesWithoutDoc.length; j++) {
+                            const nextLine = linesWithoutDoc[j];
+                            if (nextLine.trim().startsWith('```')) {
+                                endCodeBlock = !endCodeBlock;
                             }
-                            targetLine = endLine;
-                            foundTarget = true;
-                            break;
+                            if (!endCodeBlock && nextLine.startsWith('# ') && !nextLine.startsWith('## ')) {
+                                endLine = j;
+                                break;
+                            }
                         }
-                        docIdx++;
+                        targetLine = endLine;
+                        foundTarget = true;
+                        break;
                     }
+                    docIdx++;
                 }
             }
         }
@@ -769,8 +774,6 @@ export function moveWorkbookSection(
     _targetTabOrderIndex: number | null = null
 ): UpdateResult {
     const configDict: EditorConfig = context.config ? JSON.parse(context.config) : {};
-    const wbName = context.workbook?.name;
-    const rootMarker = wbName ? `# ${wbName}` : (configDict.rootMarker ?? '# Workbook');
     const _sheetHeaderLevel = configDict.sheetHeaderLevel ?? 2;
 
     const mdText = context.mdText;
@@ -806,15 +809,13 @@ export function moveWorkbookSection(
             }
 
             if (!inCodeBlock && line.startsWith('# ') && !line.startsWith('## ')) {
-                const stripped = line.trim();
-                if (stripped !== rootMarker) {
-                    if (docIdx === toDocIndex && toBeforeDoc) {
-                        // For toBeforeDoc, insert before this document
-                        targetLine = i;
-                        break;
-                    }
-                    docIdx++;
+                // All H1s in linesWithoutWb are documents (workbook was removed)
+                if (docIdx === toDocIndex && toBeforeDoc) {
+                    // For toBeforeDoc, insert before this document
+                    targetLine = i;
+                    break;
                 }
+                docIdx++;
             }
         }
 
@@ -831,20 +832,16 @@ export function moveWorkbookSection(
                 }
 
                 if (!inCodeBlock && line.startsWith('# ') && !line.startsWith('## ')) {
-                    const stripped = line.trim();
-
-                    // If we found the target doc and hit ANY level-1 header, end here
+                    // All H1s in linesWithoutWb are documents (workbook was removed)
                     if (foundDoc) {
                         targetLine = i;
                         break;
                     }
 
-                    if (stripped !== rootMarker) {
-                        if (docIdx === toDocIndex) {
-                            foundDoc = true;
-                        }
-                        docIdx++;
+                    if (docIdx === toDocIndex) {
+                        foundDoc = true;
                     }
+                    docIdx++;
                 }
             }
 
@@ -895,6 +892,148 @@ export function moveWorkbookSection(
         content: newMdText,
         startLine: 0,
         endLine: lines.length,
+        file_changed: true
+    };
+}
+
+// =============================================================================
+// Frontmatter Operations
+// =============================================================================
+
+/**
+ * Find the range of YAML frontmatter block and its body content.
+ * Returns null if no valid frontmatter is found.
+ *
+ * - yamlStart: line index of opening `---` (always 0)
+ * - yamlEnd: line index of closing `---`
+ * - bodyEnd: line index of first H1 header (or total lines if none)
+ */
+function getFrontmatterRange(lines: string[]): { yamlStart: number; yamlEnd: number; bodyEnd: number } | null {
+    if (lines.length === 0 || lines[0].trim() !== '---') {
+        return null;
+    }
+
+    // Find closing ---
+    let yamlEnd = -1;
+    for (let i = 1; i < lines.length; i++) {
+        if (lines[i].trim() === '---') {
+            yamlEnd = i;
+            break;
+        }
+    }
+    if (yamlEnd < 0) return null;
+
+    // Find first H1 (body extends from yamlEnd+1 to first H1 or EOF)
+    let bodyEnd = lines.length;
+    let inCodeBlock = false;
+    for (let i = yamlEnd + 1; i < lines.length; i++) {
+        if (lines[i].trim().startsWith('```')) inCodeBlock = !inCodeBlock;
+        if (!inCodeBlock && lines[i].startsWith('# ') && !lines[i].startsWith('## ')) {
+            bodyEnd = i;
+            break;
+        }
+    }
+
+    return { yamlStart: 0, yamlEnd, bodyEnd };
+}
+
+/**
+ * Update the body content of the frontmatter section.
+ * The body is the text between the closing `---` and the first H1 header.
+ */
+export function updateFrontmatterContent(context: EditorContext, content: string): UpdateResult {
+    const lines = context.mdText.split('\n');
+    const range = getFrontmatterRange(lines);
+    if (!range) {
+        return { error: 'No frontmatter found' };
+    }
+
+    const { yamlEnd, bodyEnd } = range;
+
+    // Build new body: blank line after ---, content, blank line before H1
+    // \n\n after --- creates a blank line separator; \n\n before H1 creates blank line before heading
+    const body = content.trim() ? '\n\n' + content.trimEnd() + '\n\n' : '\n\n';
+
+    // Replace lines between yamlEnd (inclusive of ---) and bodyEnd
+    const beforeLines = lines.slice(0, yamlEnd + 1); // includes the closing ---
+    const afterLines = lines.slice(bodyEnd);
+    const newMdText = beforeLines.join('\n') + body + afterLines.join('\n');
+    context.mdText = newMdText;
+
+    return {
+        content: newMdText,
+        startLine: 0,
+        endLine: lines.length - 1,
+        file_changed: true
+    };
+}
+
+/**
+ * Rename the frontmatter title field.
+ * Updates the `title:` value in the YAML frontmatter block.
+ */
+export function renameFrontmatterTitle(context: EditorContext, newTitle: string): UpdateResult {
+    const lines = context.mdText.split('\n');
+    const range = getFrontmatterRange(lines);
+    if (!range) {
+        return { error: 'No frontmatter found' };
+    }
+
+    const { yamlEnd } = range;
+
+    // Find and replace the title line within the YAML block
+    let titleFound = false;
+    for (let i = 1; i < yamlEnd; i++) {
+        const match = lines[i].match(/^title:\s*/);
+        if (match) {
+            lines[i] = `title: ${newTitle}`;
+            titleFound = true;
+            break;
+        }
+    }
+
+    if (!titleFound) {
+        return { error: 'No title field found in frontmatter' };
+    }
+
+    const newMdText = lines.join('\n');
+    context.mdText = newMdText;
+
+    return {
+        content: newMdText,
+        startLine: 0,
+        endLine: lines.length - 1,
+        file_changed: true
+    };
+}
+
+/**
+ * Delete the frontmatter section entirely.
+ * Removes the YAML `---` block and all body content up to the first H1 header.
+ */
+export function deleteFrontmatter(context: EditorContext): UpdateResult {
+    const lines = context.mdText.split('\n');
+    const range = getFrontmatterRange(lines);
+    if (!range) {
+        return { error: 'No frontmatter found' };
+    }
+
+    const { bodyEnd } = range;
+
+    // Remove everything from start to bodyEnd
+    const afterLines = lines.slice(bodyEnd);
+    // Strip leading blank lines from the remaining content
+    let startIdx = 0;
+    while (startIdx < afterLines.length && afterLines[startIdx].trim() === '') {
+        startIdx++;
+    }
+    const newMdText = afterLines.slice(startIdx).join('\n');
+    context.mdText = newMdText;
+
+    return {
+        content: newMdText,
+        startLine: 0,
+        endLine: lines.length - 1,
         file_changed: true
     };
 }

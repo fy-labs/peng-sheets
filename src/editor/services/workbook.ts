@@ -13,7 +13,9 @@ import type { UpdateResult, TabOrderItem, EditorConfig } from '../types';
 export function initializeTabOrderFromStructure(
     mdText: string,
     config: string | null,
-    numSheets: number
+    numSheets: number,
+    workbookStartLine?: number,
+    workbookEndLine?: number
 ): TabOrderItem[] {
     const configDict: EditorConfig = config ? JSON.parse(config) : {};
     const rootMarker = configDict.rootMarker ?? '# Workbook';
@@ -26,30 +28,45 @@ export function initializeTabOrderFromStructure(
         }));
     }
 
+    // Determine workbook range
+    const sheetHeaderLevel = configDict.sheetHeaderLevel ?? 2;
+    let wbStart: number;
+    let wbEnd: number;
+    if (workbookStartLine !== undefined && workbookEndLine !== undefined) {
+        wbStart = workbookStartLine;
+        wbEnd = workbookEndLine;
+    } else {
+        [wbStart, wbEnd] = getWorkbookRange(mdText, rootMarker, sheetHeaderLevel);
+    }
+
     const lines = mdText.split('\n');
     const tabOrder: TabOrderItem[] = [];
     let docIndex = 0;
     let workbookFound = false;
     let inCodeBlock = false;
 
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
         if (line.trim().startsWith('```')) {
             inCodeBlock = !inCodeBlock;
         }
 
-        if (!inCodeBlock && line.startsWith('# ') && !line.startsWith('## ')) {
-            const stripped = line.trim();
-            if (stripped === rootMarker) {
-                // Workbook section - add all sheets at this position
+        // Skip lines within the workbook range
+        if (i >= wbStart && i < wbEnd) {
+            if (i === wbStart && !workbookFound) {
+                // Insert all sheets at the workbook's position
                 workbookFound = true;
-                for (let i = 0; i < numSheets; i++) {
-                    tabOrder.push({ type: 'sheet', index: i });
+                for (let s = 0; s < numSheets; s++) {
+                    tabOrder.push({ type: 'sheet', index: s });
                 }
-            } else {
-                // Document section
-                tabOrder.push({ type: 'document', index: docIndex });
-                docIndex++;
             }
+            continue;
+        }
+
+        if (!inCodeBlock && line.startsWith('# ') && !line.startsWith('## ')) {
+            // Document section (outside workbook range)
+            tabOrder.push({ type: 'document', index: docIndex });
+            docIndex++;
         }
     }
 
@@ -305,17 +322,19 @@ export function generateAndGetRange(context: EditorContext): UpdateResult {
                 inCodeBlock = !inCodeBlock;
             }
 
+            // Skip lines within the workbook range
+            if (i >= wbStart && i < wbEnd) {
+                continue;
+            }
+
             if (!inCodeBlock && line.startsWith('# ') && !line.startsWith('## ')) {
-                const stripped = line.trim();
-                if (stripped !== rootMarker) {
-                    // This is a document section
-                    if (i < wbStart) {
-                        docsBeforeWb.push(docIdx);
-                    } else if (i >= wbEnd) {
-                        docsAfterWb.push(docIdx);
-                    }
-                    docIdx++;
+                // This is a document section (outside workbook range)
+                if (i < wbStart) {
+                    docsBeforeWb.push(docIdx);
+                } else {
+                    docsAfterWb.push(docIdx);
                 }
+                docIdx++;
             }
         }
 
@@ -372,7 +391,28 @@ export function generateAndGetRange(context: EditorContext): UpdateResult {
     // Build rootMarker from workbook name or config
     const wbName = workbook?.name;
     const rootMarker = wbName ? `# ${wbName}` : (configDict.rootMarker ?? '# Workbook');
-    const [startLine, rawEndLine] = getWorkbookRange(mdText, rootMarker, sheetHeaderLevel);
+
+    // Use parser-detected range for virtual root workbooks (rootMarker not in text).
+    // For normal workbooks, use dynamic detection (parser values become stale after mutations).
+    let startLine: number;
+    let rawEndLine: number;
+    if (workbook?.startLine !== undefined && workbook?.endLine !== undefined) {
+        // Check if rootMarker actually exists in text
+        const lines = mdText.split('\n');
+        const rootInText = lines.some((line) => line.trim() === rootMarker);
+        if (rootInText) {
+            // Normal workbook: use dynamic detection
+            [startLine, rawEndLine] = getWorkbookRange(mdText, rootMarker, sheetHeaderLevel);
+        } else {
+            // Virtual root: workbook IS the entire file (no H1 boundary).
+            // Use parser startLine but endLine = EOF (parser endLine may not cover
+            // all H2 sections like doc sheets).
+            startLine = workbook.startLine;
+            rawEndLine = lines.length;
+        }
+    } else {
+        [startLine, rawEndLine] = getWorkbookRange(mdText, rootMarker, sheetHeaderLevel);
+    }
     const lines = mdText.split('\n');
 
     let endLine = rawEndLine;
@@ -391,7 +431,11 @@ export function generateAndGetRange(context: EditorContext): UpdateResult {
         }
     }
 
-    let content = newMd + '\n';
+    // Normalize consecutive blank lines: toMarkdown() may produce 3+ consecutive newlines
+    // (double blank lines) for doc sheets because the parser stores content with leading
+    // newlines. Collapse to max 2 consecutive newlines (= 1 blank line) to prevent
+    // accumulation on each parse-edit cycle. Then ensure single trailing newline.
+    let content = newMd.replace(/\n{3,}/g, '\n\n').replace(/\n+$/, '') + '\n';
 
     // Ensure empty line before appended content if file is not empty
     if (startLine >= lines.length && mdText) {

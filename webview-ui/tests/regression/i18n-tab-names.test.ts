@@ -381,4 +381,201 @@ Some content
             expect(tableNames).not.toContain('Table 1');
         });
     });
+
+    describe('bug: sheet counter should not count doc sheets (integration)', () => {
+        it('1 sheet + 1 doc sheet: addSheet should create "Sheet 2", not "Sheet 3"', () => {
+            const md = `# Doc
+
+## Sheet 1
+
+### Table 1
+
+| A |
+|---|
+| 1 |
+
+## Document 1
+
+Some text content
+`;
+            editor.initializeWorkbook(md, JSON.stringify({}));
+            setLanguage('en');
+
+            // Verify initial state: 1 spreadsheet + 1 doc sheet
+            const stateBefore = JSON.parse(editor.getState());
+            const sheetsBefore = stateBefore.workbook.sheets as { name: string; tables: unknown[] }[];
+            expect(sheetsBefore).toHaveLength(2); // Sheet 1 + Document 1
+            expect(sheetsBefore[0].name).toBe('Sheet 1');
+            expect(sheetsBefore[0].tables).toHaveLength(1); // spreadsheet
+            expect(sheetsBefore[1].name).toBe('Document 1');
+            expect(sheetsBefore[1].tables).toHaveLength(0); // doc sheet
+
+            // Integration: addSheet via editor API — name should be based on spreadsheet count only
+            const result = editor.addSheet('Sheet 2', ['Col 1'], 'Table 1', null, null);
+            expect(result.error).toBeUndefined();
+
+            const stateAfter = JSON.parse(editor.getState());
+            const sheetsAfter = stateAfter.workbook.sheets as { name: string }[];
+            const sheetNames = sheetsAfter.map((s) => s.name);
+
+            // Sheet 2 should exist (counter based on 1 spreadsheet, not 2 total sheets)
+            expect(sheetNames).toContain('Sheet 2');
+            // Sheet 3 should NOT exist (would happen if doc sheets were counted)
+            expect(sheetNames).not.toContain('Sheet 3');
+        });
+
+        it('2 sheets + 2 doc sheets: third addSheet should create "Sheet 3"', () => {
+            const md = `# Doc
+
+## Sheet 1
+
+### Table 1
+
+| A |
+|---|
+| 1 |
+
+## Document 1
+
+Some doc content
+
+## Sheet 2
+
+### Table 2
+
+| B |
+|---|
+| 2 |
+
+## Document 2
+
+More doc content
+`;
+            editor.initializeWorkbook(md, JSON.stringify({}));
+            setLanguage('en');
+
+            // Verify initial state: 2 spreadsheets + 2 doc sheets = 4 sheets total
+            const stateBefore = JSON.parse(editor.getState());
+            const sheetsBefore = stateBefore.workbook.sheets as { name: string; tables: unknown[] }[];
+            expect(sheetsBefore).toHaveLength(4);
+
+            const spreadsheetCount = sheetsBefore.filter((s) => s.tables && s.tables.length > 0).length;
+            const docSheetCount = sheetsBefore.filter((s) => !s.tables || s.tables.length === 0).length;
+            expect(spreadsheetCount).toBe(2); // Sheet 1, Sheet 2
+            expect(docSheetCount).toBe(2); // Document 1, Document 2
+
+            // Integration: addSheet — counter should be 3 (2 spreadsheets + 1), NOT 5 (4 total + 1)
+            const result = editor.addSheet('Sheet 3', ['Col 1'], 'Table 1', null, null);
+            expect(result.error).toBeUndefined();
+
+            const stateAfter = JSON.parse(editor.getState());
+            const sheetNames = stateAfter.workbook.sheets.map((s: { name: string }) => s.name);
+            expect(sheetNames).toContain('Sheet 3');
+            expect(sheetNames).not.toContain('Sheet 5');
+        });
+    });
+
+    describe('bug: doc counter should not count pinned frontmatter tab (integration)', () => {
+        it('workbook with no docs: addDocSheet should create "Document 1"', () => {
+            const md = `# Doc
+
+## Sheet 1
+
+### Table 1
+
+| A |
+|---|
+| 1 |
+`;
+            editor.initializeWorkbook(md, JSON.stringify({}));
+            setLanguage('en');
+
+            // Verify initial state: 1 spreadsheet, 0 doc sheets
+            const stateBefore = JSON.parse(editor.getState());
+            const sheetsBefore = stateBefore.workbook.sheets as { name: string }[];
+            expect(sheetsBefore).toHaveLength(1);
+            expect(sheetsBefore[0].name).toBe('Sheet 1');
+
+            // Integration: addDocSheet — should be "Document 1" (no docs exist)
+            const result = editor.addDocSheet('Document 1', '', null, null);
+            expect(result.error).toBeUndefined();
+
+            const stateAfter = JSON.parse(editor.getState());
+            const names = stateAfter.workbook.sheets.map((s: { name: string }) => s.name);
+            expect(names).toContain('Document 1');
+        });
+
+        it('sequential doc adds: should produce "Document 1", "Document 2", "Document 3"', () => {
+            const md = `# Doc
+
+## Sheet 1
+
+### Table 1
+
+| A |
+|---|
+| 1 |
+`;
+            editor.initializeWorkbook(md, JSON.stringify({}));
+            setLanguage('en');
+
+            // Add first doc
+            const result1 = editor.addDocSheet('Document 1', '', null, null);
+            expect(result1.error).toBeUndefined();
+
+            // Add second doc
+            const result2 = editor.addDocSheet('Document 2', '', null, null);
+            expect(result2.error).toBeUndefined();
+
+            // Add third doc
+            const result3 = editor.addDocSheet('Document 3', '', null, null);
+            expect(result3.error).toBeUndefined();
+
+            // Verify all three docs exist with correct sequential names
+            const stateAfter = JSON.parse(editor.getState());
+            const names = stateAfter.workbook.sheets.map((s: { name: string }) => s.name);
+            expect(names).toContain('Document 1');
+            expect(names).toContain('Document 2');
+            expect(names).toContain('Document 3');
+            expect(names).toHaveLength(4); // Sheet 1 + 3 docs
+        });
+
+        it('1 existing doc sheet: next addDocSheet should create "Document 2", not duplicate', () => {
+            const md = `# Doc
+
+## Sheet 1
+
+### Table 1
+
+| A |
+|---|
+| 1 |
+
+## Document 1
+
+Existing doc content
+`;
+            editor.initializeWorkbook(md, JSON.stringify({}));
+            setLanguage('en');
+
+            // Verify "Document 1" already exists as a doc sheet
+            const stateBefore = JSON.parse(editor.getState());
+            const sheetsBefore = stateBefore.workbook.sheets as { name: string; tables: unknown[] }[];
+            const docSheetsBefore = sheetsBefore.filter((s) => !s.tables || s.tables.length === 0);
+            expect(docSheetsBefore).toHaveLength(1);
+            expect(docSheetsBefore[0].name).toBe('Document 1');
+
+            // Integration: addDocSheet — should be "Document 2", NOT another "Document 1"
+            const result = editor.addDocSheet('Document 2', '', null, null);
+            expect(result.error).toBeUndefined();
+
+            const stateAfter = JSON.parse(editor.getState());
+            const names = stateAfter.workbook.sheets.map((s: { name: string }) => s.name);
+
+            // Verify correct name and no duplicates
+            expect(names).toContain('Document 2');
+            const doc1Count = names.filter((n: string) => n === 'Document 1').length;
+            expect(doc1Count).toBe(1); // Only one "Document 1" — no duplication
+        });
+    });
 });

@@ -5,8 +5,21 @@ All notable changes to the "PengSheets" extension will be documented in this fil
 ## [Unreleased]
 
 ### Added
+
 - Native image support in Document tabs with paste and drag-and-drop capabilities.
 - Integrated EasyMDE for enhanced Markdown editing in Document tabs.
+
+## [1.3.0] - 2026-03-11
+
+### Added
+
+- Support YAML frontmatter with `title` field as an H1 equivalent, following a widely adopted convention.
+- Display a read-only header field above the editor in Document tab edit mode, showing the Markdown heading level (e.g. `## Title`).
+
+### Fixed
+
+- Fix empty table cells containing extra whitespace (`|  |` → `| |`).
+- Fix extra blank lines accumulating under Document tab headers on each cell edit in frontmatter workbooks.
 
 ## [1.2.1] - 2026-02-24
 

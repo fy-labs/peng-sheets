@@ -14,6 +14,8 @@ export interface TabDefinition {
     sheetIndex?: number;
     documentIndex?: number;
     index: number;
+    /** Pinned tabs are immovable (not draggable). Used for root and frontmatter tabs. */
+    pinned?: boolean;
 }
 
 /**
@@ -180,14 +182,14 @@ export class BottomTabs extends LitElement {
             activeElement.blur();
         }
 
-        if (tab.type === 'add-sheet' || tab.type === 'root') return;
+        if (tab.type === 'add-sheet' || tab.type === 'root' || tab.pinned) return;
         if (this.editingIndex === index) return;
         this._dragCtrl.startPotentialDrag(e, index);
     }
 
     private _handleMouseMove(e: MouseEvent, index: number, tab: TabDefinition) {
         if (!this._dragCtrl.isDragging) return;
-        if (tab.type === 'add-sheet' || tab.type === 'root') return;
+        if (tab.type === 'add-sheet' || tab.type === 'root' || tab.pinned) return;
 
         const target = e.currentTarget as HTMLElement;
         this._dragCtrl.updateDropTarget(index, target, e.clientX);
