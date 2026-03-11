@@ -4,6 +4,8 @@ All notable changes to the "PengSheets" extension will be documented in this fil
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-03-11
+
 ### Added
 - Support YAML frontmatter with `title` field as an H1 equivalent, following a widely adopted convention.
 - Display a read-only header field above the editor in Document tab edit mode, showing the Markdown heading level (e.g. `## Title`).
