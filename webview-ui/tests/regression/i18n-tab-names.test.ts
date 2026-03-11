@@ -462,7 +462,7 @@ More doc content
             const spreadsheetCount = sheetsBefore.filter((s) => s.tables && s.tables.length > 0).length;
             const docSheetCount = sheetsBefore.filter((s) => !s.tables || s.tables.length === 0).length;
             expect(spreadsheetCount).toBe(2); // Sheet 1, Sheet 2
-            expect(docSheetCount).toBe(2);    // Document 1, Document 2
+            expect(docSheetCount).toBe(2); // Document 1, Document 2
 
             // Integration: addSheet — counter should be 3 (2 spreadsheets + 1), NOT 5 (4 total + 1)
             const result = editor.addSheet('Sheet 3', ['Col 1'], 'Table 1', null, null);
@@ -579,4 +579,3 @@ Existing doc content
         });
     });
 });
-

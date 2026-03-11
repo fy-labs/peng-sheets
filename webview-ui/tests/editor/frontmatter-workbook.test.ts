@@ -60,14 +60,10 @@ date: 2024-01-01
             const state = JSON.parse(getState());
 
             // Strict: structure contains exactly one workbook section
-            const wbSections = state.structure.filter(
-                (s: { type: string }) => s.type === 'workbook'
-            );
+            const wbSections = state.structure.filter((s: { type: string }) => s.type === 'workbook');
             expect(wbSections).toHaveLength(1);
             // No document sections expected (no H1 = no separate docs)
-            const docSections = state.structure.filter(
-                (s: { type: string }) => s.type === 'document'
-            );
+            const docSections = state.structure.filter((s: { type: string }) => s.type === 'document');
             expect(docSections).toHaveLength(0);
         });
 
@@ -78,9 +74,7 @@ date: 2024-01-01
             const tabOrder = state.workbook.metadata?.tab_order;
             // Strict: tab_order exists and has correct structure
             expect(tabOrder).toBeInstanceOf(Array);
-            const sheetTabs = tabOrder.filter(
-                (t: { type: string }) => t.type === 'sheet'
-            );
+            const sheetTabs = tabOrder.filter((t: { type: string }) => t.type === 'sheet');
             expect(sheetTabs).toHaveLength(2);
             // Verify indices are correct
             expect(sheetTabs[0].index).toBe(0);
@@ -192,7 +186,7 @@ This is the root doc.
             expect(result.error).toBeUndefined();
 
             const lines = result.content!.split('\n');
-            const docHeaderIdx = lines.findIndex(l => l === '## Document 1');
+            const docHeaderIdx = lines.findIndex((l) => l === '## Document 1');
             // Document 1 header must be present
             expect(docHeaderIdx).toBeGreaterThan(-1);
 
@@ -250,7 +244,7 @@ test
             expect(result2.error).toBeUndefined();
 
             const lines = result2.content!.split('\n');
-            const docHeaderIdx = lines.findIndex(l => l === '## Document 1');
+            const docHeaderIdx = lines.findIndex((l) => l === '## Document 1');
             expect(docHeaderIdx).toBeGreaterThan(-1);
 
             // Count blank lines after Document 1 header
