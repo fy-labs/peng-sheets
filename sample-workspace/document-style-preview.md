@@ -77,7 +77,6 @@ for step in ["install", "open", "edit"]:
 
 Use `parse_workbook_from_file()` to load your data. The `--format json` flag enables JSON output.
 
-
 ```python
 from md_spreadsheet_parser import parse_workbook_from_file
 
@@ -120,16 +119,18 @@ npm install md-spreadsheet-parser
 ### Simple Table
 
 | Feature | Description |
-|:--------|:------------|
+| :--- | :--- |
 | 🎯 **Excel-like Editing** | Navigate and edit Markdown tables with familiar spreadsheet controls |
 | 📑 **Multi-Sheet Workbooks** | Organize data across multiple sheets using Markdown headers |
 | 🔢 **Formula Columns** | Auto-calculated columns with formulas and VLOOKUP-style cross-table references |
 | ⚡ **Real-time Sync** | Changes in the spreadsheet instantly reflect in your Markdown source |
 
+<!-- md-spreadsheet-table-metadata: {"columns": {"0": {"width": 246}, "1": {"width": 414}}} -->
+
 ### Comparison Table
 
 | | PengSheets | Other Editors |
-|:--|:--|:--|
+| :--- | :--- | :--- |
 | **Multi-Sheet Support** | ✅ Full workbook | ❌ Single table |
 | **Parsing Engine** | Python (WASM) | JavaScript |
 | **Real-time Sync** | ✅ Bidirectional | ⚠️ One-way |
@@ -138,12 +139,12 @@ npm install md-spreadsheet-parser
 ### Data Table
 
 | Year | Q1 | Q2 | Q3 | Q4 | Total |
-|------|-----:|-----:|-----:|-----:|------:|
+| --- | ---: | ---: | ---: | ---: | ---: |
 | 2022 | 1200 | 1350 | 1180 | 1420 | 5150 |
 | 2023 | 1500 | 1680 | 1550 | 1790 | 6520 |
 | 2024 | 1800 | 2010 | 1920 | 2150 | 7880 |
 
----
+<!-- md-spreadsheet-sheet-metadata: {"layout": {"type": "pane", "id": "root", "tables": [0, 1, 2], "activeTableIndex": 0}} -->
 
 ## Horizontal Rules
 
