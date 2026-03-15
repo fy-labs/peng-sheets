@@ -29,6 +29,13 @@ export interface SaveMessage {
     type: 'save';
 }
 
+export interface SaveImageMessage {
+    type: 'saveImage';
+    messageId: string;
+    fileName: string;
+    fileData: string; // base64 encoded
+}
+
 export interface UpdateOrConfigMessage {
     // Messages sent FROM extension TO webview, leaving here for completeness or future use if needed, but primarily we are defining From Webview types.
     type: 'update' | 'configUpdate';
@@ -42,4 +49,5 @@ export type WebviewMessage =
     | UndoMessage
     | RedoMessage
     | CreateSpreadsheetMessage
-    | SaveMessage;
+    | SaveMessage
+    | SaveImageMessage;

@@ -101,6 +101,16 @@ describe('Bug 2: Edit mode should not include header for document tabs', () => {
     let container: HTMLElement;
 
     beforeEach(async () => {
+        // Mock getBoundingClientRect for JSDOM and CodeMirror
+        Range.prototype.getBoundingClientRect = () => ({
+            bottom: 0, height: 0, left: 0, right: 0, top: 0, width: 0, x: 0, y: 0,
+            toJSON() { return this; }
+        });
+
+        Range.prototype.getClientRects = () => {
+            return { length: 0, item: () => null, [Symbol.iterator]: function* () { } } as unknown as DOMRectList;
+        };
+
         await import('../../components/spreadsheet-document-view.js');
         container = document.createElement('div');
         document.body.appendChild(container);
@@ -110,14 +120,6 @@ describe('Bug 2: Edit mode should not include header for document tabs', () => {
         container.remove();
     });
 
-    /**
-     * Reproduces Bug 2 for regular document tabs (Multi H1 mode).
-     * In spreadsheet-document-view.ts _enterEditMode() line ~74:
-     *   this._editContent = this.isRootTab ? this.content : this._getFullContent();
-     * _getFullContent() returns `# ${this.title}\n${this.content}`, so the textarea
-     * shows "# Doc" which is confusing. Since tab name is editable via double-click,
-     * the header should NOT be in the textarea.
-     */
     it('should NOT include H1 header in edit mode for regular document tab', async () => {
         element = document.createElement('spreadsheet-document-view') as HTMLElement;
         (element as any).title = 'My Document';
@@ -127,25 +129,17 @@ describe('Bug 2: Edit mode should not include header for document tabs', () => {
         await (element as any).updateComplete;
 
         // Enter edit mode
-        const outputDiv = element.shadowRoot!.querySelector('.output') as HTMLElement;
+        const outputDiv = element.querySelector('.output') as HTMLElement;
         expect(outputDiv).toBeTruthy();
         outputDiv.click();
         await (element as any).updateComplete;
 
-        // Check textarea content
-        const textarea = element.shadowRoot!.querySelector('textarea') as HTMLTextAreaElement;
-        expect(textarea).toBeTruthy();
-
-        // BUG: Currently textarea contains "# My Document\nHello world\n\nParagraph 2"
-        // EXPECTED: textarea should contain only "Hello world\n\nParagraph 2" (no header)
-        expect(textarea.value).not.toContain('# My Document');
-        expect(textarea.value).toContain('Hello world');
+        // Check edit content (EasyMDE wraps the textarea)
+        const editContent = (element as any)._editContent;
+        expect(editContent).not.toContain('# My Document');
+        expect(editContent).toContain('Hello world');
     });
 
-    /**
-     * Reproduces Bug 2 for doc sheet tabs (Single H1 mode).
-     * Same issue: _getFullContent() adds "# title" to edit content.
-     */
     it('should NOT include H1 header in edit mode for doc sheet tab', async () => {
         element = document.createElement('spreadsheet-document-view') as HTMLElement;
         (element as any).title = 'Doc Sheet';
@@ -156,25 +150,19 @@ describe('Bug 2: Edit mode should not include header for document tabs', () => {
         await (element as any).updateComplete;
 
         // Enter edit mode
-        const outputDiv = element.shadowRoot!.querySelector('.output') as HTMLElement;
+        const outputDiv = element.querySelector('.output') as HTMLElement;
         expect(outputDiv).toBeTruthy();
         outputDiv.click();
         await (element as any).updateComplete;
 
-        // Check textarea content
-        const textarea = element.shadowRoot!.querySelector('textarea') as HTMLTextAreaElement;
-        expect(textarea).toBeTruthy();
-
-        // EXPECTED: textarea should contain only body content (no header)
-        expect(textarea.value).not.toContain('# Doc Sheet');
-        expect(textarea.value).toContain('Doc sheet content here');
+        // Check edit content
+        const editContent = (element as any)._editContent;
+        expect(editContent).not.toContain('# Doc Sheet');
+        expect(editContent).toContain('Doc sheet content here');
     });
 
-    /**
-     * Verifies that saving from edit mode correctly preserves title and body
-     * when the textarea no longer contains a header line.
-     */
     it('should preserve title when saving edited content without header', async () => {
+        vi.useFakeTimers();
         element = document.createElement('spreadsheet-document-view') as HTMLElement;
         (element as any).title = 'Original Title';
         (element as any).content = 'Original content';
@@ -186,31 +174,28 @@ describe('Bug 2: Edit mode should not include header for document tabs', () => {
         element.addEventListener('document-change', eventSpy);
 
         // Enter edit mode
-        const outputDiv = element.shadowRoot!.querySelector('.output') as HTMLElement;
+        const outputDiv = element.querySelector('.output') as HTMLElement;
         outputDiv.click();
         await (element as any).updateComplete;
 
-        const textarea = element.shadowRoot!.querySelector('textarea') as HTMLTextAreaElement;
+        const easymde = (element as any)._easymde;
+        expect(easymde).toBeTruthy();
 
-        // Edit just the body content (no header in textarea)
-        textarea.value = 'Updated content';
-        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        // Edit content (no header prefix)
+        easymde.value('Updated content');
 
-        // Trigger save via blur
-        textarea.dispatchEvent(new FocusEvent('blur'));
-        await new Promise((resolve) => setTimeout(resolve, 150));
+        // Save via _exitEditMode
+        (element as any)._exitEditMode(true);
 
-        // Title should be preserved from the original, content should be updated
+        vi.advanceTimersByTime(500);
+
         expect(eventSpy).toHaveBeenCalled();
         const detail = eventSpy.mock.calls[0][0].detail;
         expect(detail.title).toBe('Original Title');
         expect(detail.content).toBe('Updated content');
+        vi.useRealTimers();
     });
 
-    /**
-     * Verifies that the rendered preview still shows the title (H1 header).
-     * Only edit mode should hide it.
-     */
     it('should still show H1 header in rendered preview mode', async () => {
         element = document.createElement('spreadsheet-document-view') as HTMLElement;
         (element as any).title = 'Preview Title';
@@ -220,7 +205,7 @@ describe('Bug 2: Edit mode should not include header for document tabs', () => {
         await (element as any).updateComplete;
 
         // In preview mode, the rendered HTML should include the title as H1
-        const outputDiv = element.shadowRoot!.querySelector('.output') as HTMLElement;
+        const outputDiv = element.querySelector('.output') as HTMLElement;
         expect(outputDiv).toBeTruthy();
         expect(outputDiv.innerHTML).toContain('Preview Title');
     });

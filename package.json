@@ -240,7 +240,10 @@
         "vitest": "^4.0.15"
     },
     "dependencies": {
+        "easymde": "^2.20.0",
+        "highlight.js": "^11.11.1",
         "js-yaml": "^4.1.1",
+        "marked-highlight": "^2.2.3",
         "md-spreadsheet-parser": "^1.4.3"
     }
 }
