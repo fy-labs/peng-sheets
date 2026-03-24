@@ -1,8 +1,45 @@
-import { expect, fixture, html } from '@open-wc/testing';
-import { describe, it, beforeEach, afterEach } from 'vitest';
-import { SpreadsheetDocumentView } from '../../../components/spreadsheet-document-view';
-import * as sinon from 'sinon';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 
+// Mock ResizeObserver for jsdom
+beforeAll(() => {
+    global.ResizeObserver = class ResizeObserver {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+    };
+});
+
+// EasyMDE mock — stores options so imageUploadFunction is accessible
+vi.mock('easymde', () => {
+    const EasyMDE = vi.fn().mockImplementation(function (this: any, options: any) {
+        this._options = options;
+        this.options = options;
+        this.codemirror = {
+            on: vi.fn(),
+            setOption: vi.fn()
+        };
+        this.value = vi.fn().mockReturnValue('');
+        this.toTextArea = vi.fn();
+
+        // Simulate EasyMDE creating .editor-toolbar in parent
+        if (options?.element?.parentElement) {
+            const toolbar = document.createElement('div');
+            toolbar.className = 'editor-toolbar';
+            options.element.parentElement.insertBefore(toolbar, options.element);
+        }
+    });
+    (EasyMDE as any).toggleBold = vi.fn();
+    (EasyMDE as any).toggleItalic = vi.fn();
+    (EasyMDE as any).toggleHeadingSmaller = vi.fn();
+    (EasyMDE as any).toggleBlockquote = vi.fn();
+    (EasyMDE as any).toggleUnorderedList = vi.fn();
+    (EasyMDE as any).toggleOrderedList = vi.fn();
+    (EasyMDE as any).drawLink = vi.fn();
+    (EasyMDE as any).drawImage = vi.fn();
+    (EasyMDE as any).togglePreview = vi.fn();
+    (EasyMDE as any).toggleSideBySide = vi.fn();
+    return { default: EasyMDE };
+});
 
 describe('SpreadsheetDocumentView image saving', () => {
     let container: HTMLElement;
@@ -11,12 +48,21 @@ describe('SpreadsheetDocumentView image saving', () => {
     beforeEach(async () => {
         // Mock getBoundingClientRect for JSDOM and CodeMirror
         Range.prototype.getBoundingClientRect = () => ({
-            bottom: 0, height: 0, left: 0, right: 0, top: 0, width: 0, x: 0, y: 0,
-            toJSON() { return this; }
+            bottom: 0,
+            height: 0,
+            left: 0,
+            right: 0,
+            top: 0,
+            width: 0,
+            x: 0,
+            y: 0,
+            toJSON() {
+                return this;
+            }
         });
 
         Range.prototype.getClientRects = () => {
-            return { length: 0, item: () => null, [Symbol.iterator]: function* () { } } as unknown as DOMRectList;
+            return { length: 0, item: () => null, [Symbol.iterator]: function* () {} } as unknown as DOMRectList;
         };
 
         // Import the component
@@ -38,7 +84,7 @@ describe('SpreadsheetDocumentView image saving', () => {
 
     afterEach(() => {
         container.remove();
-        sinon.restore();
+        vi.clearAllMocks();
     });
 
     it('should dispatch saveImage action and handle imageSaved response', async () => {
@@ -50,21 +96,24 @@ describe('SpreadsheetDocumentView image saving', () => {
             }
         });
 
-        // Enter edit mode
-        const outputDiv = element.querySelector('.output') as HTMLElement;
-        if (!outputDiv) {
-            console.error("outputDiv not found! Full HTML:", element.outerHTML);
+        // Enter write mode via Write tab
+        const tabs = element.querySelectorAll('.sdv-tab');
+        const writeTab = tabs[1] as HTMLElement;
+        if (!writeTab) {
+            console.error('Write tab not found! Full HTML:', element.outerHTML);
         }
-        outputDiv.click();
+        writeTab.click();
+        await (element as any).updateComplete;
+        await new Promise((r) => setTimeout(r, 0));
         await (element as any).updateComplete;
 
-        // Since EasyMDE is initialized, we can access it via the protected/private property using any cast
+        // Since EasyMDE is initialized, access it via the private property
         const easymde = (element as any)._easymde;
-        expect(easymde).to.exist;
+        expect(easymde).toBeTruthy();
 
         // Extract the imageUploadFunction from options
         const options = easymde.options;
-        expect(options.imageUploadFunction).to.be.a('function');
+        expect(typeof options.imageUploadFunction).toBe('function');
 
         // Create a mock file
         const file = new File(['fake image data'], 'test.png', { type: 'image/png' });
@@ -73,25 +122,29 @@ describe('SpreadsheetDocumentView image saving', () => {
 
         let successUrl = '';
         let errorMsg = '';
-        const onSuccess = (url: string) => { successUrl = url; };
-        const onError = (msg: string) => { errorMsg = msg; };
+        const onSuccess = (url: string) => {
+            successUrl = url;
+        };
+        const onError = (msg: string) => {
+            errorMsg = msg;
+        };
 
         // Call the upload function
         try {
             await options.imageUploadFunction(file, onSuccess, onError);
         } catch (e) {
-            console.error("imageUploadFunction threw:", e);
+            console.error('imageUploadFunction threw:', e);
         }
-        console.log("errorMsg:", errorMsg);
+        console.log('errorMsg:', errorMsg);
 
         // Wait a tiny bit for the Promise to resolve
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
 
         // Verify dispatch
-        expect(dispatchedEvent).to.exist;
-        const detail = dispatchedEvent!.detail;
-        expect(detail.fileName).to.equal('test.png');
-        expect(detail.messageId).to.exist;
+        expect(dispatchedEvent).toBeTruthy();
+        const detail = (dispatchedEvent as CustomEvent).detail;
+        expect(detail.fileName).toBe('test.png');
+        expect(detail.messageId).toBeTruthy();
 
         // Now simulate the extension host responding with imageSaved
         const responseEvent = new CustomEvent('imageSaved', {
@@ -103,7 +156,7 @@ describe('SpreadsheetDocumentView image saving', () => {
         });
         window.dispatchEvent(responseEvent);
 
-        expect(successUrl).to.equal('./images/test.png');
-        expect(errorMsg).to.equal('');
+        expect(successUrl).toBe('./images/test.png');
+        expect(errorMsg).toBe('');
     });
 });

@@ -1,4 +1,59 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
+
+// Mock ResizeObserver for jsdom
+beforeAll(() => {
+    global.ResizeObserver = class ResizeObserver {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+    };
+});
+
+// EasyMDE mock — captures options and simulates toolbar creation
+vi.mock('easymde', () => {
+    const EasyMDE = vi.fn().mockImplementation(function (this: any, options: any) {
+        this._options = options;
+        this.options = options;
+        this.codemirror = {
+            on: vi.fn(),
+            setOption: vi.fn()
+        };
+        // value() returns whatever was set via value(newVal), or initialValue
+        let _val = options?.initialValue ?? '';
+        this.value = vi.fn().mockImplementation((newVal?: string) => {
+            if (newVal !== undefined) _val = newVal;
+            return _val;
+        });
+        this.toTextArea = vi.fn();
+
+        // Simulate EasyMDE creating .editor-toolbar in parent
+        if (options?.element?.parentElement) {
+            const toolbar = document.createElement('div');
+            toolbar.className = 'editor-toolbar';
+            options.element.parentElement.insertBefore(toolbar, options.element);
+        }
+    });
+    (EasyMDE as any).toggleBold = vi.fn();
+    (EasyMDE as any).toggleItalic = vi.fn();
+    (EasyMDE as any).toggleHeadingSmaller = vi.fn();
+    (EasyMDE as any).toggleBlockquote = vi.fn();
+    (EasyMDE as any).toggleUnorderedList = vi.fn();
+    (EasyMDE as any).toggleOrderedList = vi.fn();
+    (EasyMDE as any).drawLink = vi.fn();
+    (EasyMDE as any).drawImage = vi.fn();
+    (EasyMDE as any).togglePreview = vi.fn();
+    (EasyMDE as any).toggleSideBySide = vi.fn();
+    return { default: EasyMDE };
+});
+
+/** Helper: switch to the Write tab and wait for EasyMDE to initialize. */
+async function enterWriteMode(element: HTMLElement): Promise<void> {
+    const tabs = element.querySelectorAll('.sdv-tab');
+    (tabs[1] as HTMLElement).click();
+    await (element as any).updateComplete;
+    await new Promise((r) => setTimeout(r, 0));
+    await (element as any).updateComplete;
+}
 
 // Test the document-change event dispatch mechanism
 describe('SpreadsheetDocumentView save functionality', () => {
@@ -6,16 +61,23 @@ describe('SpreadsheetDocumentView save functionality', () => {
     let container: HTMLElement;
 
     beforeEach(async () => {
-        vi.useFakeTimers();
-
         // Mock getBoundingClientRect for JSDOM and CodeMirror
         Range.prototype.getBoundingClientRect = () => ({
-            bottom: 0, height: 0, left: 0, right: 0, top: 0, width: 0, x: 0, y: 0,
-            toJSON() { return this; }
+            bottom: 0,
+            height: 0,
+            left: 0,
+            right: 0,
+            top: 0,
+            width: 0,
+            x: 0,
+            y: 0,
+            toJSON() {
+                return this;
+            }
         });
 
         Range.prototype.getClientRects = () => {
-            return { length: 0, item: () => null, [Symbol.iterator]: function* () { } } as unknown as DOMRectList;
+            return { length: 0, item: () => null, [Symbol.iterator]: function* () {} } as unknown as DOMRectList;
         };
 
         // Import the component
@@ -37,85 +99,92 @@ describe('SpreadsheetDocumentView save functionality', () => {
 
     afterEach(() => {
         container.remove();
+        vi.clearAllMocks();
     });
 
-    it('should dispatch document-change event when content is edited and blur occurs', async () => {
-        const eventSpy = vi.fn();
-        element.addEventListener('document-change', eventSpy);
+    it('should show View tab as active in view mode', async () => {
+        const tabs = element.querySelectorAll('.sdv-tab');
+        expect(tabs.length).toBe(2);
+        // View tab (index 0) should be active
+        expect(tabs[0].getAttribute('aria-selected')).toBe('true');
+        expect(tabs[1].getAttribute('aria-selected')).toBe('false');
+    });
 
-        // The component uses Light DOM, so we query directly on element
+    it('should NOT enter write mode when clicking on content area', async () => {
         const outputDiv = element.querySelector('.output') as HTMLElement;
         expect(outputDiv).toBeTruthy();
         outputDiv.click();
 
-        // Wait for edit mode to activate
         await (element as any).updateComplete;
 
-        // Since we are using EasyMDE, there is no direct textarea dispatch for input/blur that will save
-        // Instead, the exit edit mode logic uses EasyMDE's value.
-        const easymde = (element as any)._easymde;
-        expect(easymde).toBeTruthy();
+        // Should still be in view mode (_activeTab === 'view')
+        expect((element as any)._activeTab).toBe('view');
+        expect((element as any)._easymde).toBeNull();
+        expect(element.querySelector('.output')).toBeTruthy();
+    });
 
-        // Modify the content (edit mode no longer includes # title)
-        easymde.value('New text');
-        console.log("Called easymde.value()");
+    it('should enter write mode and initialize EasyMDE when Write tab is clicked', async () => {
+        await enterWriteMode(element);
 
-        // Instead of triggering blur, call _exitEditMode directly because tests can't simulate
-        // clicking outside easily for EasyMDE structure.
-        console.log("Calling _exitEditMode");
+        expect((element as any)._activeTab).toBe('write');
+        expect((element as any)._easymde).toBeTruthy();
+        expect(element.querySelector('.edit-container')).toBeTruthy();
+    });
+
+    it('should dispatch document-change event when content is edited and View tab is clicked', async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
         try {
-            (element as any)._exitEditMode(true);
-            console.log("Successfully called _exitEditMode");
-        } catch (err) {
-            console.error("_exitEditMode threw error:", err);
+            const eventSpy = vi.fn();
+            element.addEventListener('document-change', eventSpy);
+
+            await enterWriteMode(element);
+
+            const easymde = (element as any)._easymde;
+            expect(easymde).toBeTruthy();
+
+            // Modify the content via the mock
+            easymde.value('New text');
+
+            // Switch back to View tab (calls _switchToViewTab(true))
+            (element as any)._switchToViewTab(true);
+            await (element as any).updateComplete;
+
+            vi.advanceTimersByTime(500);
+            expect(eventSpy).toHaveBeenCalled();
+            expect(eventSpy.mock.calls[0][0].detail.sectionIndex).toEqual(0);
+            expect(eventSpy.mock.calls[0][0].detail.content).toEqual('New text');
+            expect(eventSpy.mock.calls[0][0].detail.title).toEqual('Test Content');
+        } finally {
+            vi.useRealTimers();
         }
-
-        // Wait for component to update
-        await (element as any).updateComplete;
-
-        // Verify event was dispatched
-        console.log("advancing timers by 500ms");
-        vi.advanceTimersByTime(500);
-        console.log("eventSpy mock calls:", eventSpy.mock.calls);
-        expect(eventSpy).toHaveBeenCalled();
-        // Title is preserved from component property, content is from editor
-        expect(eventSpy.mock.calls[0][0].detail.sectionIndex).toEqual(0);
-        expect(eventSpy.mock.calls[0][0].detail.content).toEqual('New text');
-        expect(eventSpy.mock.calls[0][0].detail.title).toEqual('Test Content');
     });
 
     it('should NOT dispatch document-change event if content is unchanged', async () => {
         const eventSpy = vi.fn();
         element.addEventListener('document-change', eventSpy);
 
-        const outputDiv = element.querySelector('.output') as HTMLElement;
-        outputDiv.click();
+        await enterWriteMode(element);
 
-        await (element as any).updateComplete;
+        // Exit without modifying (switch to View tab)
+        (element as any)._switchToViewTab(true);
 
-        // Exit without modifying
-        (element as any)._exitEditMode(true);
-
-        // Event should NOT be dispatched
+        // Event should NOT be dispatched (content unchanged)
         expect(eventSpy).not.toHaveBeenCalled();
     });
 
-    it('should cancel edit and NOT save when Escape is pressed', async () => {
+    it('should cancel edit and NOT save when Escape handler is called', async () => {
         const eventSpy = vi.fn();
         element.addEventListener('document-change', eventSpy);
 
-        const outputDiv = element.querySelector('.output') as HTMLElement;
-        outputDiv.click();
-
-        await (element as any).updateComplete;
+        await enterWriteMode(element);
 
         const easymde = (element as any)._easymde;
 
-        // Change content (no # title prefix)
+        // Change content
         easymde.value('Modified Content');
 
-        // Cancel edit mode (save=false)
-        (element as any)._exitEditMode(false);
+        // Cancel edit mode (shouldSave=false, like Escape key)
+        (element as any)._switchToViewTab(false);
 
         await (element as any).updateComplete;
 
@@ -126,29 +195,32 @@ describe('SpreadsheetDocumentView save functionality', () => {
         const outputDivAfter = element.querySelector('.output');
         expect(outputDivAfter).toBeTruthy();
     });
-    it('should set save: true in document-change when Save button is clicked, ignoring subsequent blur', async () => {
-        const eventSpy = vi.fn();
-        element.addEventListener('document-change', eventSpy);
 
-        const outputDiv = element.querySelector('.output') as HTMLElement;
-        outputDiv.click();
-        await (element as any).updateComplete;
+    it('should set save: true in document-change when View tab is clicked', async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+            const eventSpy = vi.fn();
+            element.addEventListener('document-change', eventSpy);
 
-        const easymde = (element as any)._easymde;
-        const saveButton = element.querySelector('.save-button') as HTMLElement;
+            await enterWriteMode(element);
 
-        // Change content (no # title prefix)
-        easymde.value('Changed Content');
+            const easymde = (element as any)._easymde;
 
-        // Click Save (this calls _exitEditMode(true))
-        saveButton.click();
+            // Change content
+            easymde.value('Changed Content');
 
-        console.log("advancing timers by 500ms");
-        vi.advanceTimersByTime(500);
+            // Switch to View tab (calls _switchToViewTab(true))
+            const tabsAfter = element.querySelectorAll('.sdv-tab');
+            (tabsAfter[0] as HTMLElement).click();
 
-        expect(eventSpy).toHaveBeenCalledTimes(1);
-        const detail = eventSpy.mock.calls[0][0].detail;
-        expect(detail.content).toContain('Changed Content');
-        expect(detail.save).toBe(true);
+            vi.advanceTimersByTime(500);
+
+            expect(eventSpy).toHaveBeenCalledTimes(1);
+            const detail = eventSpy.mock.calls[0][0].detail;
+            expect(detail.content).toContain('Changed Content');
+            expect(detail.save).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });

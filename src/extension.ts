@@ -84,7 +84,7 @@ export function activate(context: vscode.ExtensionContext) {
     );
 }
 
-export function deactivate() { }
+export function deactivate() {}
 
 export async function newWorkbookHandler() {
     // Get workspace folder

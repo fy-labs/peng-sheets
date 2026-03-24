@@ -4,10 +4,54 @@
  * Bug 1: Doc tab shows table icon and spreadsheet toolbar (should show file icon, no toolbar)
  * Bug 2: Edit mode shows "# Doc" header (should be hidden for all doc tabs)
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { isDocSheetType, isSheetJSON, SheetJSON } from '../../types';
 
-// --- Bug 1: Toolbar & Icon ---
+// Mock ResizeObserver for jsdom
+beforeAll(() => {
+    global.ResizeObserver = class ResizeObserver {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+    };
+});
+
+// EasyMDE mock — captures options for toolbar inspection
+vi.mock('easymde', () => {
+    const EasyMDE = vi.fn().mockImplementation(function (this: any, options: any) {
+        this._options = options;
+        this.options = options;
+        this.codemirror = {
+            on: vi.fn(),
+            setOption: vi.fn()
+        };
+        let _val = options?.initialValue ?? '';
+        this.value = vi.fn().mockImplementation((newVal?: string) => {
+            if (newVal !== undefined) _val = newVal;
+            return _val;
+        });
+        this.toTextArea = vi.fn();
+
+        if (options?.element?.parentElement) {
+            const toolbar = document.createElement('div');
+            toolbar.className = 'editor-toolbar';
+            options.element.parentElement.insertBefore(toolbar, options.element);
+        }
+    });
+    (EasyMDE as any).toggleBold = vi.fn();
+    (EasyMDE as any).toggleItalic = vi.fn();
+    (EasyMDE as any).toggleHeadingSmaller = vi.fn();
+    (EasyMDE as any).toggleBlockquote = vi.fn();
+    (EasyMDE as any).toggleUnorderedList = vi.fn();
+    (EasyMDE as any).toggleOrderedList = vi.fn();
+    (EasyMDE as any).drawLink = vi.fn();
+    (EasyMDE as any).drawImage = vi.fn();
+    (EasyMDE as any).togglePreview = vi.fn();
+    (EasyMDE as any).toggleSideBySide = vi.fn();
+    return { default: EasyMDE };
+});
+
+// ─── Bug 1: Toolbar & Icon ────────────────────────────────────────────────────
 
 describe('Bug 1: Doc sheet toolbar and icon', () => {
     /**
@@ -94,7 +138,7 @@ describe('Bug 1: Doc sheet toolbar and icon', () => {
     });
 });
 
-// --- Bug 2: Edit mode header ---
+// ─── Bug 2: Edit mode header ──────────────────────────────────────────────────
 
 describe('Bug 2: Edit mode should not include header for document tabs', () => {
     let element: HTMLElement;
@@ -103,12 +147,21 @@ describe('Bug 2: Edit mode should not include header for document tabs', () => {
     beforeEach(async () => {
         // Mock getBoundingClientRect for JSDOM and CodeMirror
         Range.prototype.getBoundingClientRect = () => ({
-            bottom: 0, height: 0, left: 0, right: 0, top: 0, width: 0, x: 0, y: 0,
-            toJSON() { return this; }
+            bottom: 0,
+            height: 0,
+            left: 0,
+            right: 0,
+            top: 0,
+            width: 0,
+            x: 0,
+            y: 0,
+            toJSON() {
+                return this;
+            }
         });
 
         Range.prototype.getClientRects = () => {
-            return { length: 0, item: () => null, [Symbol.iterator]: function* () { } } as unknown as DOMRectList;
+            return { length: 0, item: () => null, [Symbol.iterator]: function* () {} } as unknown as DOMRectList;
         };
 
         await import('../../components/spreadsheet-document-view.js');
@@ -118,9 +171,10 @@ describe('Bug 2: Edit mode should not include header for document tabs', () => {
 
     afterEach(() => {
         container.remove();
+        vi.clearAllMocks();
     });
 
-    it('should NOT include H1 header in edit mode for regular document tab', async () => {
+    it('should NOT include H1 header in write mode for regular document tab', async () => {
         element = document.createElement('spreadsheet-document-view') as HTMLElement;
         (element as any).title = 'My Document';
         (element as any).content = 'Hello world\n\nParagraph 2';
@@ -128,19 +182,22 @@ describe('Bug 2: Edit mode should not include header for document tabs', () => {
         container.appendChild(element);
         await (element as any).updateComplete;
 
-        // Enter edit mode
-        const outputDiv = element.querySelector('.output') as HTMLElement;
-        expect(outputDiv).toBeTruthy();
-        outputDiv.click();
+        // Enter write mode via Write tab
+        const tabs = element.querySelectorAll('.sdv-tab');
+        const writeTab = tabs[1] as HTMLElement;
+        expect(writeTab).toBeTruthy();
+        writeTab.click();
+        await (element as any).updateComplete;
+        await new Promise((r) => setTimeout(r, 0));
         await (element as any).updateComplete;
 
-        // Check edit content (EasyMDE wraps the textarea)
+        // _editContent should be body only (no # title)
         const editContent = (element as any)._editContent;
         expect(editContent).not.toContain('# My Document');
         expect(editContent).toContain('Hello world');
     });
 
-    it('should NOT include H1 header in edit mode for doc sheet tab', async () => {
+    it('should NOT include H1 header in write mode for doc sheet tab', async () => {
         element = document.createElement('spreadsheet-document-view') as HTMLElement;
         (element as any).title = 'Doc Sheet';
         (element as any).content = 'Doc sheet content here';
@@ -149,10 +206,13 @@ describe('Bug 2: Edit mode should not include header for document tabs', () => {
         container.appendChild(element);
         await (element as any).updateComplete;
 
-        // Enter edit mode
-        const outputDiv = element.querySelector('.output') as HTMLElement;
-        expect(outputDiv).toBeTruthy();
-        outputDiv.click();
+        // Enter write mode via Write tab
+        const tabs = element.querySelectorAll('.sdv-tab');
+        const writeTab = tabs[1] as HTMLElement;
+        expect(writeTab).toBeTruthy();
+        writeTab.click();
+        await (element as any).updateComplete;
+        await new Promise((r) => setTimeout(r, 0));
         await (element as any).updateComplete;
 
         // Check edit content
@@ -162,7 +222,7 @@ describe('Bug 2: Edit mode should not include header for document tabs', () => {
     });
 
     it('should preserve title when saving edited content without header', async () => {
-        vi.useFakeTimers();
+        vi.useFakeTimers({ shouldAdvanceTime: true });
         element = document.createElement('spreadsheet-document-view') as HTMLElement;
         (element as any).title = 'Original Title';
         (element as any).content = 'Original content';
@@ -173,9 +233,11 @@ describe('Bug 2: Edit mode should not include header for document tabs', () => {
         const eventSpy = vi.fn();
         element.addEventListener('document-change', eventSpy);
 
-        // Enter edit mode
-        const outputDiv = element.querySelector('.output') as HTMLElement;
-        outputDiv.click();
+        // Enter write mode via Write tab
+        const tabs = element.querySelectorAll('.sdv-tab');
+        (tabs[1] as HTMLElement).click();
+        await (element as any).updateComplete;
+        await new Promise((r) => setTimeout(r, 0));
         await (element as any).updateComplete;
 
         const easymde = (element as any)._easymde;
@@ -184,8 +246,8 @@ describe('Bug 2: Edit mode should not include header for document tabs', () => {
         // Edit content (no header prefix)
         easymde.value('Updated content');
 
-        // Save via _exitEditMode
-        (element as any)._exitEditMode(true);
+        // Save via _switchToViewTab
+        (element as any)._switchToViewTab(true);
 
         vi.advanceTimersByTime(500);
 
@@ -196,17 +258,23 @@ describe('Bug 2: Edit mode should not include header for document tabs', () => {
         vi.useRealTimers();
     });
 
-    it('should still show H1 header in rendered preview mode', async () => {
+    it('should show title in .sdv-title-bar in view mode (not as h1 in .output)', async () => {
         element = document.createElement('spreadsheet-document-view') as HTMLElement;
         (element as any).title = 'Preview Title';
         (element as any).content = 'Preview body';
+        (element as any).headerText = '## Preview Title';
         (element as any).sectionIndex = 0;
         container.appendChild(element);
         await (element as any).updateComplete;
 
-        // In preview mode, the rendered HTML should include the title as H1
+        // Title should be in .sdv-title-bar, not as h1 in .output
+        const titleBar = element.querySelector('.sdv-title-bar') as HTMLElement;
+        expect(titleBar).toBeTruthy();
+        expect(titleBar.textContent).toContain('Preview Title');
+
+        // The .output should NOT contain an h1 with the title
         const outputDiv = element.querySelector('.output') as HTMLElement;
         expect(outputDiv).toBeTruthy();
-        expect(outputDiv.innerHTML).toContain('Preview Title');
+        expect(outputDiv.querySelector('h1')).toBeNull();
     });
 });

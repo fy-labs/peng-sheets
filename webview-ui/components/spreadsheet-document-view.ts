@@ -40,17 +40,21 @@ export class SpreadsheetDocumentView extends LitElement {
     sheetIndex: number = 0;
 
     @state()
-    private _isEditing: boolean = false;
+    private _activeTab: 'view' | 'write' = 'view';
 
-    @state()
-    private _editContent: string = '';
+    private _editContent: string | null = null;
 
     private _debounceTimer: number | null = null;
     private _easymde: EasyMDE | null = null;
+    private _resizeObserver: ResizeObserver | null = null;
 
     protected willUpdate(changedProperties: PropertyValues): void {
         super.willUpdate(changedProperties);
-        if (changedProperties.has('content') && !this._isEditing) {
+        // Only sync content prop into _editContent when in view mode and _editContent
+        // is still null (Write mode has never been entered). Once the user has entered
+        // Write mode (_editContent !== null), we never overwrite their in-memory edits
+        // with a stale prop value.
+        if (changedProperties.has('content') && this._activeTab === 'view' && this._editContent === null) {
             this._editContent = this.content;
         }
     }
@@ -69,7 +73,11 @@ export class SpreadsheetDocumentView extends LitElement {
     }
 
     private _getRenderedContent(): string {
-        const fullContent = this._getFullContent();
+        // Use _editContent (in-memory, always up-to-date) when Write mode has been
+        // entered at least once (_editContent !== null). null means we haven't entered
+        // Write mode yet, so fall back to the content prop. This correctly handles the
+        // case where the user deleted all text (empty string is valid edited content).
+        const fullContent = this._editContent !== null ? this._editContent : this._getFullContent(false);
         if (!fullContent.trim()) return `<p><em>${t('clickToEdit')}...</em></p>`;
 
         marked.use(
@@ -96,9 +104,15 @@ export class SpreadsheetDocumentView extends LitElement {
         }
     }
 
-    private async _enterEditMode(): Promise<void> {
-        this._editContent = this.isRootTab ? this.content : this._getFullContent(false);
-        this._isEditing = true;
+    private async _switchToWriteTab(): Promise<void> {
+        if (this._activeTab === 'write') return;
+
+        // On first Write mode entry, _editContent is null — initialise from the prop.
+        // On subsequent entries, preserve whatever the user had already typed.
+        if (this._editContent === null) {
+            this._editContent = this.isRootTab ? this.content : this._getFullContent(false);
+        }
+        this._activeTab = 'write';
 
         await this.updateComplete;
 
@@ -106,7 +120,7 @@ export class SpreadsheetDocumentView extends LitElement {
         if (textarea && !this._easymde) {
             this._easymde = new EasyMDE({
                 element: textarea,
-                initialValue: this._editContent,
+                initialValue: this._editContent ?? this._getFullContent(false),
                 autoDownloadFontAwesome: false,
                 spellChecker: false,
                 autofocus: true,
@@ -117,21 +131,21 @@ export class SpreadsheetDocumentView extends LitElement {
                         name: 'bold',
                         action: EasyMDE.toggleBold,
                         className: 'easymde-icon',
-                        title: 'Bold',
+                        title: t('toolbarBold'),
                         icon: '<span class="codicon codicon-bold"></span>'
                     },
                     {
                         name: 'italic',
                         action: EasyMDE.toggleItalic,
                         className: 'easymde-icon',
-                        title: 'Italic',
+                        title: t('toolbarItalic'),
                         icon: '<span class="codicon codicon-italic"></span>'
                     },
                     {
                         name: 'heading',
                         action: EasyMDE.toggleHeadingSmaller,
                         className: 'easymde-icon',
-                        title: 'Heading',
+                        title: t('toolbarHeading'),
                         icon: '<span class="codicon codicon-text-size"></span>'
                     },
                     '|',
@@ -139,21 +153,21 @@ export class SpreadsheetDocumentView extends LitElement {
                         name: 'quote',
                         action: EasyMDE.toggleBlockquote,
                         className: 'easymde-icon',
-                        title: 'Quote',
+                        title: t('toolbarQuote'),
                         icon: '<span class="codicon codicon-quote"></span>'
                     },
                     {
                         name: 'unordered-list',
                         action: EasyMDE.toggleUnorderedList,
                         className: 'easymde-icon',
-                        title: 'Generic List',
+                        title: t('toolbarUnorderedList'),
                         icon: '<span class="codicon codicon-list-unordered"></span>'
                     },
                     {
                         name: 'ordered-list',
                         action: EasyMDE.toggleOrderedList,
                         className: 'easymde-icon',
-                        title: 'Numbered List',
+                        title: t('toolbarOrderedList'),
                         icon: '<span class="codicon codicon-list-ordered"></span>'
                     },
                     '|',
@@ -161,37 +175,29 @@ export class SpreadsheetDocumentView extends LitElement {
                         name: 'link',
                         action: EasyMDE.drawLink,
                         className: 'easymde-icon',
-                        title: 'Create Link',
+                        title: t('toolbarLink'),
                         icon: '<span class="codicon codicon-link"></span>'
                     },
                     {
                         name: 'image',
                         action: EasyMDE.drawImage,
                         className: 'easymde-icon',
-                        title: 'Insert Image',
+                        title: t('toolbarImage'),
                         icon: '<span class="codicon codicon-file-media"></span>'
-                    },
-                    {
-                        name: 'preview',
-                        action: EasyMDE.togglePreview,
-                        className: 'no-disable',
-                        title: 'Toggle Preview',
-                        icon: '<span class="codicon codicon-open-preview"></span>'
-                    },
-                    {
-                        name: 'side-by-side',
-                        action: EasyMDE.toggleSideBySide,
-                        className: 'no-disable no-mobile',
-                        title: 'Toggle Side by Side',
-                        icon: '<span class="codicon codicon-split-horizontal"></span>'
                     }
                 ],
                 uploadImage: true,
                 imageAccept: 'image/png, image/jpeg, image/gif, image/webp',
-                imageUploadFunction: async (file: File, onSuccess: (url: string) => void, onError: (error: string) => void) => {
+                imageUploadFunction: async (
+                    file: File,
+                    onSuccess: (url: string) => void,
+                    onError: (error: string) => void
+                ) => {
                     try {
                         const buffer = await file.arrayBuffer();
-                        const base64 = btoa(new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), ''));
+                        const base64 = btoa(
+                            new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+                        );
 
                         // Send message to extension host to save the image
                         const messageId = Math.random().toString(36).substring(7);
@@ -232,18 +238,31 @@ export class SpreadsheetDocumentView extends LitElement {
                 this._editContent = this._easymde!.value();
             });
 
-
             // Handle Escape key inside CodeMirror
             this._easymde.codemirror.setOption('extraKeys', {
                 Esc: () => {
-                    this._exitEditMode(false);
+                    this._switchToViewTab(false);
                 }
             });
+
+            // Make EasyMDE toolbar sticky below .sdv-title-bar + .sdv-tab-bar
+            this._updateStickyPositions();
+
+            // Watch for resize changes
+            if (typeof ResizeObserver !== 'undefined') {
+                this._resizeObserver = new ResizeObserver(() => {
+                    this._updateStickyPositions();
+                });
+                const titleBar = this.querySelector('.sdv-title-bar') as HTMLElement;
+                const tabBar = this.querySelector('.sdv-tab-bar') as HTMLElement;
+                if (titleBar) this._resizeObserver.observe(titleBar);
+                if (tabBar) this._resizeObserver.observe(tabBar);
+            }
         }
     }
 
-    private _exitEditMode(shouldSave: boolean = false): void {
-        if (!this._isEditing) return;
+    private _switchToViewTab(shouldSave: boolean = false): void {
+        if (this._activeTab === 'view') return;
 
         if (this._easymde) {
             this._editContent = this._easymde.value();
@@ -251,7 +270,12 @@ export class SpreadsheetDocumentView extends LitElement {
             this._easymde = null;
         }
 
-        this._isEditing = false;
+        if (this._resizeObserver) {
+            this._resizeObserver.disconnect();
+            this._resizeObserver = null;
+        }
+
+        this._activeTab = 'view';
         const currentFullContent = this._getFullContent(false);
 
         if (this._editContent !== currentFullContent) {
@@ -267,6 +291,25 @@ export class SpreadsheetDocumentView extends LitElement {
         }
     }
 
+    private _updateStickyPositions(): void {
+        const titleBar = this.querySelector('.sdv-title-bar') as HTMLElement;
+        const tabBar = this.querySelector('.sdv-tab-bar') as HTMLElement;
+        const toolbar = this.querySelector('.editor-toolbar') as HTMLElement;
+
+        const titleBarHeight = titleBar ? titleBar.getBoundingClientRect().height : 0;
+        const tabBarHeight = tabBar ? tabBar.getBoundingClientRect().height : 0;
+
+        if (tabBar) {
+            tabBar.style.top = `${titleBarHeight}px`;
+        }
+        if (toolbar) {
+            toolbar.style.position = 'sticky';
+            toolbar.style.top = `${titleBarHeight + tabBarHeight}px`;
+            toolbar.style.zIndex = '28';
+            toolbar.style.background = 'var(--vscode-editor-background)';
+        }
+    }
+
     private _extractTitleAndBody(content: string): { title: string; body: string } {
         // Edit mode no longer includes header in textarea,
         // so content IS the body. Title is preserved from the component property.
@@ -274,15 +317,27 @@ export class SpreadsheetDocumentView extends LitElement {
     }
 
     private _saveContent(shouldSave: boolean = false): void {
-        console.log("SpreadsheetDocumentView: _saveContent called, shouldSave=", shouldSave);
+        console.log('SpreadsheetDocumentView: _saveContent called, shouldSave=', shouldSave);
         if (this._debounceTimer) {
             window.clearTimeout(this._debounceTimer);
         }
 
         this._debounceTimer = window.setTimeout(() => {
-            console.log("SpreadsheetDocumentView: _saveContent timeout executing");
-            const { title, body } = this._extractTitleAndBody(this._editContent);
-            console.log("Extracted title:", title, "body:", body, "isRootTab:", this.isRootTab, "isDocSheet:", this.isDocSheet);
+            console.log('SpreadsheetDocumentView: _saveContent timeout executing');
+            // _saveContent is only called from _switchToViewTab after _editContent has
+            // been set from _easymde.value(), so it is guaranteed to be a string here.
+            const editContent = this._editContent ?? '';
+            const { title, body } = this._extractTitleAndBody(editContent);
+            console.log(
+                'Extracted title:',
+                title,
+                'body:',
+                body,
+                'isRootTab:',
+                this.isRootTab,
+                'isDocSheet:',
+                this.isDocSheet
+            );
 
             if (this.isRootTab) {
                 this.dispatchEvent(
@@ -290,7 +345,7 @@ export class SpreadsheetDocumentView extends LitElement {
                         bubbles: true,
                         composed: true,
                         detail: {
-                            content: this._editContent,
+                            content: editContent,
                             save: shouldSave
                         }
                     })
@@ -309,7 +364,7 @@ export class SpreadsheetDocumentView extends LitElement {
                     })
                 );
             } else {
-                console.log("Dispatching document-change event");
+                console.log('Dispatching document-change event');
                 this.dispatchEvent(
                     new CustomEvent('document-change', {
                         bubbles: true,
@@ -327,24 +382,26 @@ export class SpreadsheetDocumentView extends LitElement {
     }
 
     render() {
-        console.log("Running render() for SpreadsheetDocumentView", this.title, this._isEditing);
-        console.log("easymdeStyles type:", typeof easymdeStyles);
+        console.log('Running render() for SpreadsheetDocumentView', this.title, this._activeTab);
+        console.log('easymdeStyles type:', typeof easymdeStyles);
         return html`
             <style>
                 ${documentViewStyles}
                 ${easymdeStyles}
                 ${codiconsStyles}
                 ${hljsStyles}
-                
+
                 /* Override to fix Light DOM global bleeding if necessary */
                 .spreadsheet-document-view-container {
                     /* Container specificity */
                 }
-                
+
                 .editor-toolbar {
                     background-color: var(--vscode-editor-background) !important;
                     border-color: var(--vscode-widget-border) !important;
                     color: var(--vscode-editor-foreground) !important;
+                    position: sticky !important;
+                    z-index: 28;
                 }
 
                 .editor-toolbar button {
@@ -390,12 +447,24 @@ export class SpreadsheetDocumentView extends LitElement {
                 }
 
                 /* Match heading sizes with preview view (.output h1/h2/h3) */
-                .cm-s-easymde .cm-header-1 { font-size: 2em !important; }
-                .cm-s-easymde .cm-header-2 { font-size: 1.5em !important; }
-                .cm-s-easymde .cm-header-3 { font-size: 1.25em !important; }
-                .cm-s-easymde .cm-header-4 { font-size: 1.1em !important; }
-                .cm-s-easymde .cm-header-5 { font-size: 1em !important; }
-                .cm-s-easymde .cm-header-6 { font-size: 1em !important; }
+                .cm-s-easymde .cm-header-1 {
+                    font-size: 2em !important;
+                }
+                .cm-s-easymde .cm-header-2 {
+                    font-size: 1.5em !important;
+                }
+                .cm-s-easymde .cm-header-3 {
+                    font-size: 1.25em !important;
+                }
+                .cm-s-easymde .cm-header-4 {
+                    font-size: 1.1em !important;
+                }
+                .cm-s-easymde .cm-header-5 {
+                    font-size: 1em !important;
+                }
+                .cm-s-easymde .cm-header-6 {
+                    font-size: 1em !important;
+                }
 
                 /*
                  * Shared content styles for EasyMDE preview panes.
@@ -535,27 +604,47 @@ export class SpreadsheetDocumentView extends LitElement {
                 }
             </style>
             <div class="container spreadsheet-document-view-container">
-                ${this._isEditing
+                <!-- Title bar (hidden for root tab) -->
+                ${!this.isRootTab
                     ? html`
-                          ${this.headerText ? html`<div class="header-field">${this.headerText}</div>` : html``}
-                          <div class="edit-container">
+                          <div class="sdv-title-bar">
+                              <div class="sdv-title-text">${this.headerText || this.title}</div>
+                          </div>
+                      `
+                    : html``}
+
+                <!-- Tab bar -->
+                <div class="sdv-tab-bar" role="tablist">
+                    <button
+                        class="sdv-tab ${this._activeTab === 'view' ? 'sdv-tab--active' : ''}"
+                        role="tab"
+                        aria-selected="${this._activeTab === 'view'}"
+                        aria-label="${t('tabViewAriaLabel')}"
+                        @click=${() => this._switchToViewTab(true)}
+                    >
+                        ${t('tabView')}
+                    </button>
+                    <button
+                        class="sdv-tab ${this._activeTab === 'write' ? 'sdv-tab--active' : ''}"
+                        role="tab"
+                        aria-selected="${this._activeTab === 'write'}"
+                        aria-label="${t('tabWriteAriaLabel')}"
+                        @click=${() => this._switchToWriteTab()}
+                    >
+                        ${t('tabWrite')}
+                    </button>
+                </div>
+
+                <!-- Tab content -->
+                ${this._activeTab === 'write'
+                    ? html`
+                          <div class="edit-container" role="tabpanel">
                               <textarea class="editor"></textarea>
                           </div>
-                          <button
-                              class="save-button"
-                              @mousedown=${(e: MouseEvent) => e.preventDefault()}
-                              @click=${() => this._exitEditMode(true)}
-                          >
-                              <span class="codicon codicon-check"></span>
-                              Save
-                          </button>
                       `
                     : html`
-                          <div class="output" @click=${this._enterEditMode}>
-                              ${unsafeHTML(this._getRenderedContent())}
-                          </div>
+                          <div class="output" role="tabpanel">${unsafeHTML(this._getRenderedContent())}</div>
                           <div class="scroll-spacer"></div>
-                          <div class="edit-hint">${t('clickToEdit')}</div>
                       `}
             </div>
         `;
@@ -569,6 +658,10 @@ export class SpreadsheetDocumentView extends LitElement {
         if (this._easymde) {
             this._easymde.toTextArea();
             this._easymde = null;
+        }
+        if (this._resizeObserver) {
+            this._resizeObserver.disconnect();
+            this._resizeObserver = null;
         }
     }
 }

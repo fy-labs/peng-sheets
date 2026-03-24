@@ -21,16 +21,71 @@ spreadsheet-document-view {
     flex-direction: column;
 }
 
-/* Read-only header field */
-.header-field {
+/* Title bar — sticky at top, always visible */
+.sdv-title-bar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: var(--vscode-editor-background);
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--vscode-widget-border);
+    flex-shrink: 0;
+}
+
+.sdv-title-text {
     padding: 0.6rem 0.5rem;
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: 1.25em;
     font-weight: bold;
     color: var(--vscode-editor-foreground);
-    border-bottom: 1px solid var(--vscode-widget-border);
+    -webkit-user-select: text;
     user-select: text;
+    flex: 1;
+}
+
+/* Tab bar — sticky directly below title bar */
+.sdv-tab-bar {
+    position: sticky;
+    top: 0;
+    z-index: 29;
+    background: var(--vscode-editor-background);
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--vscode-widget-border);
+    padding: 0 0.5rem;
     flex-shrink: 0;
+}
+
+/* Tab button */
+.sdv-tab {
+    padding: 8px 16px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--vscode-editor-foreground);
+    font-size: 13px;
+    font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, sans-serif);
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.15s ease, border-color 0.15s ease;
+    margin-bottom: -1px;
+}
+
+.sdv-tab:hover {
+    opacity: 1;
+    background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+}
+
+.sdv-tab--active {
+    opacity: 1;
+    border-bottom-color: var(--vscode-focusBorder);
+    font-weight: 600;
+}
+
+.sdv-tab:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
 }
 
 /* Rendered output */
@@ -39,12 +94,11 @@ spreadsheet-document-view {
     font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, sans-serif);
     font-size: var(--vscode-font-size, 13px);
     line-height: 1.6;
-    cursor: text;
+    cursor: default;
     min-height: 300px;
     flex: 1;
     border-radius: 4px;
     padding: 0 1.5rem;
-    transition: background-color 0.15s ease;
 }
 
 /* Spacer for extra scroll room at bottom */
@@ -54,9 +108,7 @@ spreadsheet-document-view {
     pointer-events: none;
 }
 
-.output:hover {
-    background: rgba(128, 128, 128, 0.01);
-}
+
 
 .output.hidden {
     display: none;
@@ -93,54 +145,6 @@ spreadsheet-document-view {
 
 .editor.hidden {
     display: none;
-}
-
-.edit-hint {
-    position: absolute;
-    top: 4px;
-    right: 1.2em;
-    font-size: 0.85em;
-    color: var(--vscode-descriptionForeground);
-    opacity: 0;
-    transition: opacity 0.15s ease;
-    pointer-events: none;
-}
-
-.output:hover~.edit-hint,
-.edit-hint.visible {
-    opacity: 1;
-}
-
-/* Save button */
-.save-button {
-    position: absolute;
-    bottom: 2.2em;
-    right: 24px;
-    padding: 5px 12px;
-    background: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
-    border: 1px solid var(--vscode-button-border);
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: normal;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    transition: background-color 0.15s ease;
-    z-index: 10;
-}
-
-.save-button:hover {
-    background: var(--vscode-button-hoverBackground);
-}
-
-.save-button:active {
-    background: var(--vscode-button-hoverBackground);
-}
-
-.save-button .codicon {
-    font-size: 12px;
 }
 
 /* Headings */

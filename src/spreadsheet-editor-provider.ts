@@ -10,7 +10,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomTextEditorProvide
     private static activePanels: Map<string, vscode.WebviewPanel> = new Map();
     private static currentActiveUri: string | undefined;
 
-    constructor(private readonly context: vscode.ExtensionContext) { }
+    constructor(private readonly context: vscode.ExtensionContext) {}
 
     public static register(context: vscode.ExtensionContext): vscode.Disposable {
         const provider = new SpreadsheetEditorProvider(context);
@@ -59,7 +59,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomTextEditorProvide
             vscode.Uri.joinPath(this.context.extensionUri, 'resources'),
             vscode.Uri.file(document.uri.fsPath).with({ path: document.uri.path.replace(/\/[^/]+$/, '') })
         ];
-        for (const folder of (vscode.workspace.workspaceFolders ?? [])) {
+        for (const folder of vscode.workspace.workspaceFolders ?? []) {
             localResourceRoots.push(folder.uri);
         }
         webviewPanel.webview.options = {

@@ -11,7 +11,7 @@ export interface HandlerContext {
 export class MessageDispatcher {
     private _messageQueue: Promise<void> = Promise.resolve();
 
-    constructor(private context: HandlerContext) { }
+    constructor(private context: HandlerContext) {}
 
     public async dispatch(message: unknown): Promise<void> {
         if (!this.isValidMessage(message)) {
@@ -276,7 +276,10 @@ export class MessageDispatcher {
 
             // Generate unique filename
             const ext = message.fileName.split('.').pop() || 'png';
-            const basename = message.fileName.replace(`.${ext}`, '').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            const basename = message.fileName
+                .replace(`.${ext}`, '')
+                .replace(/[^a-z0-9]/gi, '_')
+                .toLowerCase();
             const timestamp = Date.now();
             const uniqueFilename = `${basename}-${timestamp}.${ext}`;
             const fileUri = vscode.Uri.joinPath(imagesDir, uniqueFilename);
