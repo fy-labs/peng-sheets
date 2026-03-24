@@ -116,7 +116,6 @@ export class SpreadsheetDocumentView extends LitElement {
 
         await this.updateComplete;
 
-        // Fix 1: both panels are always rendered; only initialise EasyMDE on first entry.
         const textarea = this.querySelector('textarea.editor') as HTMLTextAreaElement;
         if (textarea && !this._easymde) {
             this._easymde = new EasyMDE({
@@ -265,9 +264,15 @@ export class SpreadsheetDocumentView extends LitElement {
     private _switchToViewTab(shouldSave: boolean = false): void {
         if (this._activeTab === 'view') return;
 
-        // Fix 1: keep EasyMDE alive — only sync the latest value, do NOT destroy it.
         if (this._easymde) {
             this._editContent = this._easymde.value();
+            this._easymde.toTextArea();
+            this._easymde = null;
+        }
+
+        if (this._resizeObserver) {
+            this._resizeObserver.disconnect();
+            this._resizeObserver = null;
         }
 
         this._activeTab = 'view';
@@ -615,7 +620,7 @@ export class SpreadsheetDocumentView extends LitElement {
                         role="tab"
                         aria-selected="${this._activeTab === 'view'}"
                         aria-label="${t('tabViewAriaLabel')}"
-                        @click=${() => this._switchToViewTab(false)}
+                        @click=${() => this._switchToViewTab(true)}
                     >
                         ${t('tabView')}
                     </button>
@@ -630,14 +635,17 @@ export class SpreadsheetDocumentView extends LitElement {
                     </button>
                 </div>
 
-                <!-- Tab content: both panels always in DOM, toggled with sdv-hidden (Fix 1) -->
-                <div class="edit-container ${this._activeTab !== 'write' ? 'sdv-hidden' : ''}" role="tabpanel">
-                    <textarea class="editor"></textarea>
-                </div>
-                <div class="output ${this._activeTab !== 'view' ? 'sdv-hidden' : ''}" role="tabpanel">
-                    ${unsafeHTML(this._getRenderedContent())}
-                </div>
-                <div class="scroll-spacer ${this._activeTab !== 'view' ? 'sdv-hidden' : ''}"></div>
+                <!-- Tab content -->
+                ${this._activeTab === 'write'
+                    ? html`
+                          <div class="edit-container" role="tabpanel">
+                              <textarea class="editor"></textarea>
+                          </div>
+                      `
+                    : html`
+                          <div class="output" role="tabpanel">${unsafeHTML(this._getRenderedContent())}</div>
+                          <div class="scroll-spacer"></div>
+                      `}
             </div>
         `;
     }

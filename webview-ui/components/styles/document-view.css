@@ -88,11 +88,6 @@ spreadsheet-document-view {
     outline-offset: -1px;
 }
 
-/* Hide panel without removing from DOM (Fix 1: CSS show/hide for tab switching) */
-.sdv-hidden {
-    display: none;
-}
-
 /* Rendered output */
 .output {
     margin: 0 0.5rem;
