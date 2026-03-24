@@ -28,11 +28,16 @@ beforeAll(() => {
 vi.mock('easymde', () => {
     const EasyMDE = vi.fn().mockImplementation(function (this: any, options: any) {
         this._options = options;
+        this._currentValue = options?.initialValue ?? '';
         this.codemirror = {
-            on: vi.fn(),
+            on: vi.fn((event: string, cb: () => void) => {
+                if (event === 'change') {
+                    this._changeCallback = cb;
+                }
+            }),
             setOption: vi.fn()
         };
-        this.value = vi.fn().mockReturnValue(options?.initialValue ?? '');
+        this.value = vi.fn(() => this._currentValue);
         this.toTextArea = vi.fn();
 
         // Simulate EasyMDE creating .editor-toolbar in parent
@@ -118,9 +123,16 @@ describe('SpreadsheetDocumentView - Tab UI: initial state', () => {
         expect(output).toBeTruthy();
     });
 
-    it('should NOT show .edit-container in view mode', () => {
+    it('should NOT show .edit-container visibly in view mode (sdv-hidden class applied)', () => {
+        // After Fix 1: both panels are always in the DOM; the write panel is hidden via sdv-hidden
         const editContainer = element.querySelector('.edit-container');
-        expect(editContainer).toBeNull();
+        if (editContainer) {
+            // New behaviour: always-rendered, hidden by sdv-hidden class
+            expect(editContainer.classList.contains('sdv-hidden')).toBe(true);
+        } else {
+            // Legacy behaviour: not rendered at all
+            expect(editContainer).toBeNull();
+        }
     });
 });
 
@@ -183,7 +195,7 @@ describe('SpreadsheetDocumentView - Tab UI: tab switching', () => {
         expect(EasyMDE).toHaveBeenCalled();
     });
 
-    it('should show .edit-container after switching to Write tab', async () => {
+    it('should show .edit-container (not sdv-hidden) after switching to Write tab', async () => {
         const tabs = element.querySelectorAll('.sdv-tab');
         (tabs[1] as HTMLButtonElement).click();
         await element.updateComplete;
@@ -192,6 +204,8 @@ describe('SpreadsheetDocumentView - Tab UI: tab switching', () => {
 
         const editContainer = element.querySelector('.edit-container');
         expect(editContainer).toBeTruthy();
+        // After Fix 1: always in DOM, but must NOT have sdv-hidden in write mode
+        expect(editContainer!.classList.contains('sdv-hidden')).toBe(false);
     });
 
     it('should switch back to View tab when View tab is clicked from Write', async () => {
@@ -214,7 +228,9 @@ describe('SpreadsheetDocumentView - Tab UI: tab switching', () => {
         expect(tabsFinal[1].getAttribute('aria-selected')).toBe('false');
     });
 
-    it('should call EasyMDE.toTextArea() when switching from Write to View', async () => {
+    it('should NOT call EasyMDE.toTextArea() when switching from Write to View (Fix 1)', async () => {
+        // Fix 1: EasyMDE is kept alive across tab switches (CSS show/hide).
+        // toTextArea() is only called in disconnectedCallback, NOT on View tab click.
         const EasyMDEModule = await import('easymde');
         const EasyMDE = (EasyMDEModule as any).default;
 
@@ -234,7 +250,28 @@ describe('SpreadsheetDocumentView - Tab UI: tab switching', () => {
         await new Promise((r) => setTimeout(r, 0));
         await element.updateComplete;
 
-        expect(instance.toTextArea).toHaveBeenCalled();
+        // toTextArea must NOT be called on tab switch (only on disconnectedCallback)
+        expect(instance.toTextArea).not.toHaveBeenCalled();
+    });
+
+    it('should call EasyMDE.toTextArea() only when component is disconnected (Fix 1)', async () => {
+        // Verify cleanup happens in disconnectedCallback, not on tab switch.
+        const EasyMDEModule = await import('easymde');
+        const EasyMDE = (EasyMDEModule as any).default;
+
+        // Switch to Write to initialise EasyMDE
+        const tabs = element.querySelectorAll('.sdv-tab');
+        (tabs[1] as HTMLButtonElement).click();
+        await element.updateComplete;
+        await new Promise((r) => setTimeout(r, 0));
+        await element.updateComplete;
+
+        const instance = EasyMDE.mock.instances[EasyMDE.mock.instances.length - 1];
+        expect(instance.toTextArea).not.toHaveBeenCalled();
+
+        // Remove the element from DOM → triggers disconnectedCallback
+        container.remove();
+        expect(instance.toTextArea).toHaveBeenCalledTimes(1);
     });
 });
 
@@ -424,5 +461,91 @@ describe('SpreadsheetDocumentView - Tab UI: sticky structure', () => {
         expect(toolbar.style.position).toBe('sticky');
         expect(toolbar.style.zIndex).toBe('28');
         container.remove();
+    });
+});
+
+// ─── Fix 2: View tab click should dispatch save: false ────────────────────────
+
+describe('SpreadsheetDocumentView - Tab UI: Fix 2 - View tab does not trigger VS Code save', () => {
+    let element: SpreadsheetDocumentView;
+    let container: HTMLDivElement;
+
+    beforeEach(async () => {
+        ({ element, container } = await createElement({ isDocSheet: true, sheetIndex: 0 }));
+    });
+
+    afterEach(() => {
+        container.remove();
+        vi.clearAllMocks();
+    });
+
+    it('clicking View tab while in Write mode dispatches doc-sheet-change with save: false', async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+            // Switch to Write tab first
+            const tabs = element.querySelectorAll('.sdv-tab');
+            (tabs[1] as HTMLButtonElement).click();
+            await element.updateComplete;
+            await new Promise((r) => setTimeout(r, 0));
+            await element.updateComplete;
+
+            // Edit content so the change event fires
+            const EasyMDEModule = await import('easymde');
+            const EasyMDE = (EasyMDEModule as any).default;
+            const instance = EasyMDE.mock.instances[EasyMDE.mock.instances.length - 1];
+            instance._currentValue = 'New content from write tab';
+            if (instance._changeCallback) instance._changeCallback();
+
+            // Listen for the dispatched event
+            const dispatchedEvents: CustomEvent[] = [];
+            element.addEventListener('doc-sheet-change', (e) => {
+                dispatchedEvents.push(e as CustomEvent);
+            });
+
+            // Click View tab — should NOT trigger a VS Code save (save: false)
+            const tabsAfter = element.querySelectorAll('.sdv-tab');
+            (tabsAfter[0] as HTMLButtonElement).click();
+            await element.updateComplete;
+
+            // Advance past the 100ms debounce timer
+            vi.advanceTimersByTime(500);
+
+            expect(dispatchedEvents.length).toBeGreaterThan(0);
+            const lastEvent = dispatchedEvents[dispatchedEvents.length - 1];
+            expect(lastEvent.detail.save).toBe(false);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('clicking View tab with unchanged content does not dispatch doc-sheet-change', async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+            // Switch to Write tab
+            const tabs = element.querySelectorAll('.sdv-tab');
+            (tabs[1] as HTMLButtonElement).click();
+            await element.updateComplete;
+            await new Promise((r) => setTimeout(r, 0));
+            await element.updateComplete;
+
+            // Do NOT change content — keep the same as prop
+
+            const dispatchedEvents: CustomEvent[] = [];
+            element.addEventListener('doc-sheet-change', (e) => {
+                dispatchedEvents.push(e as CustomEvent);
+            });
+
+            // Click View tab without any content changes
+            const tabsAfter = element.querySelectorAll('.sdv-tab');
+            (tabsAfter[0] as HTMLButtonElement).click();
+            await element.updateComplete;
+
+            vi.advanceTimersByTime(500);
+
+            // No change occurred so no event should be dispatched
+            expect(dispatchedEvents.length).toBe(0);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });
