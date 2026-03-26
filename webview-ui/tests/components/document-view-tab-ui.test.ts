@@ -119,8 +119,10 @@ describe('SpreadsheetDocumentView - Tab UI: initial state', () => {
     });
 
     it('should NOT show .edit-container in view mode', () => {
-        const editContainer = element.querySelector('.edit-container');
-        expect(editContainer).toBeNull();
+        // After fix: _editorHost is always created by firstUpdated(), but display:none in view mode
+        const editContainer = element.querySelector('.edit-container') as HTMLElement;
+        expect(editContainer).toBeTruthy();
+        expect(editContainer.style.display).toBe('none');
     });
 });
 
@@ -214,7 +216,8 @@ describe('SpreadsheetDocumentView - Tab UI: tab switching', () => {
         expect(tabsFinal[1].getAttribute('aria-selected')).toBe('false');
     });
 
-    it('should call EasyMDE.toTextArea() when switching from Write to View', async () => {
+    it('should NOT call EasyMDE.toTextArea() when switching from Write to View (EasyMDE stays alive)', async () => {
+        // After fix: EasyMDE is kept alive in _editorHost, only display toggled
         const EasyMDEModule = await import('easymde');
         const EasyMDE = (EasyMDEModule as any).default;
 
@@ -234,7 +237,7 @@ describe('SpreadsheetDocumentView - Tab UI: tab switching', () => {
         await new Promise((r) => setTimeout(r, 0));
         await element.updateComplete;
 
-        expect(instance.toTextArea).toHaveBeenCalled();
+        expect(instance.toTextArea).not.toHaveBeenCalled();
     });
 });
 
@@ -281,6 +284,41 @@ describe('SpreadsheetDocumentView - Tab UI: Escape key', () => {
     afterEach(() => {
         container.remove();
         vi.clearAllMocks();
+    });
+
+    it('should dispatch event with save: false when Escape exits Write mode', async () => {
+        const EasyMDEModule = await import('easymde');
+        const EasyMDE = (EasyMDEModule as any).default;
+
+        // Switch to Write
+        const tabs = element.querySelectorAll('.sdv-tab');
+        (tabs[1] as HTMLButtonElement).click();
+        await element.updateComplete;
+        await new Promise((r) => setTimeout(r, 0));
+        await element.updateComplete;
+
+        // Modify content via mock
+        const instance = EasyMDE.mock.instances[EasyMDE.mock.instances.length - 1];
+        instance.value.mockReturnValue('Modified via Escape');
+
+        // Listen for event
+        const eventSpy = vi.fn();
+        element.addEventListener('document-change', eventSpy);
+
+        // Get Escape handler and call it
+        const extraKeys = instance.codemirror.setOption.mock.calls.find((call: any[]) => call[0] === 'extraKeys');
+        const escHandler = extraKeys[1].Esc;
+        escHandler();
+        await element.updateComplete;
+        await new Promise((r) => setTimeout(r, 0));
+        await element.updateComplete;
+
+        // Wait for debounce
+        await new Promise((r) => setTimeout(r, 150));
+
+        expect(eventSpy).toHaveBeenCalled();
+        expect(eventSpy.mock.calls[0][0].detail.save).toBe(false);
+        element.removeEventListener('document-change', eventSpy);
     });
 
     it('should switch to View tab when Escape is pressed in Write mode', async () => {
@@ -424,5 +462,124 @@ describe('SpreadsheetDocumentView - Tab UI: sticky structure', () => {
         expect(toolbar.style.position).toBe('sticky');
         expect(toolbar.style.zIndex).toBe('28');
         container.remove();
+    });
+});
+
+describe('SpreadsheetDocumentView - Tab UI: DOM isolation (bug reproduction)', () => {
+    let element: SpreadsheetDocumentView;
+    let container: HTMLDivElement;
+
+    beforeEach(async () => {
+        ({ element, container } = await createElement());
+    });
+
+    afterEach(() => {
+        container.remove();
+        vi.clearAllMocks();
+    });
+
+    it('_editorHost (.edit-container) exists after firstUpdated() with display:none', () => {
+        // After fix: firstUpdated() creates _editorHost appended to .sdv-container,
+        // outside Lit template control. In view mode it must be hidden.
+        const editContainer = element.querySelector('.edit-container') as HTMLElement;
+        expect(editContainer).toBeTruthy();
+        expect(editContainer.style.display).toBe('none');
+    });
+
+    it('_editorHost becomes visible after switching to Write tab', async () => {
+        const tabs = element.querySelectorAll('.sdv-tab');
+        (tabs[1] as HTMLButtonElement).click();
+        await element.updateComplete;
+        await new Promise((r) => setTimeout(r, 0));
+        await element.updateComplete;
+
+        const editContainer = element.querySelector('.edit-container') as HTMLElement;
+        expect(editContainer).toBeTruthy();
+        expect(editContainer.style.display).not.toBe('none');
+    });
+
+    it('_editorHost becomes hidden again after switching back to View tab', async () => {
+        const tabs = element.querySelectorAll('.sdv-tab');
+        // Go to Write
+        (tabs[1] as HTMLButtonElement).click();
+        await element.updateComplete;
+        await new Promise((r) => setTimeout(r, 0));
+        await element.updateComplete;
+
+        // Go back to View
+        const tabsAfter = element.querySelectorAll('.sdv-tab');
+        (tabsAfter[0] as HTMLButtonElement).click();
+        await element.updateComplete;
+        await new Promise((r) => setTimeout(r, 0));
+        await element.updateComplete;
+
+        const editContainer = element.querySelector('.edit-container') as HTMLElement;
+        expect(editContainer).toBeTruthy();
+        expect(editContainer.style.display).toBe('none');
+    });
+
+    it('disconnectedCallback() should call toTextArea() and remove _editorHost', async () => {
+        const EasyMDEModule = await import('easymde');
+        const EasyMDE = (EasyMDEModule as any).default;
+
+        // Switch to Write to initialize EasyMDE
+        const tabs = element.querySelectorAll('.sdv-tab');
+        (tabs[1] as HTMLButtonElement).click();
+        await element.updateComplete;
+        await new Promise((r) => setTimeout(r, 0));
+        await element.updateComplete;
+
+        const instance = EasyMDE.mock.instances[EasyMDE.mock.instances.length - 1];
+        const editorHost = element.querySelector('.edit-container') as HTMLElement;
+        expect(editorHost).toBeTruthy();
+
+        // Remove element from DOM (triggers disconnectedCallback)
+        container.remove();
+
+        expect(instance.toTextArea).toHaveBeenCalledTimes(1);
+        expect(document.body.contains(editorHost)).toBe(false);
+
+        // Re-create for afterEach cleanup (container.remove() already done)
+        container = document.createElement('div');
+        document.body.appendChild(container);
+    });
+
+    it('Write -> View -> Write round-trip: @click bindings remain valid after DOM isolation', async () => {
+        // This is the core reproduction of the Lit parts-marker corruption bug.
+        // With the old implementation, EasyMDE DOM operations would corrupt Lit's
+        // comment node markers, causing @click bindings to stop working after the first
+        // Write -> View cycle.
+        const tabs = element.querySelectorAll('.sdv-tab');
+
+        // First Write
+        (tabs[1] as HTMLButtonElement).click();
+        await element.updateComplete;
+        await new Promise((r) => setTimeout(r, 0));
+        await element.updateComplete;
+
+        // Back to View
+        const tabsAfterWrite = element.querySelectorAll('.sdv-tab');
+        (tabsAfterWrite[0] as HTMLButtonElement).click();
+        await element.updateComplete;
+        await new Promise((r) => setTimeout(r, 0));
+        await element.updateComplete;
+
+        // Second Write: click must still work
+        const tabsAfterView = element.querySelectorAll('.sdv-tab');
+        (tabsAfterView[1] as HTMLButtonElement).click();
+        await element.updateComplete;
+        await new Promise((r) => setTimeout(r, 0));
+        await element.updateComplete;
+
+        // _activeTab must be 'write' -- if @click was broken this would still be 'view'
+        expect((element as any)._activeTab).toBe('write');
+
+        // EasyMDE element must be inside _editorHost (not in Lit-managed DOM)
+        const EasyMDEModule = await import('easymde');
+        const EasyMDE = (EasyMDEModule as any).default;
+        const instance = EasyMDE.mock.instances[EasyMDE.mock.instances.length - 1];
+        const editorHost = element.querySelector('.edit-container') as HTMLElement;
+        expect(editorHost).toBeTruthy();
+        expect(editorHost.contains(instance._options.element)).toBe(true);
     });
 });

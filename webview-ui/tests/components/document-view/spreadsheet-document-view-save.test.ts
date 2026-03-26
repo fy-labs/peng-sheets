@@ -196,7 +196,7 @@ describe('SpreadsheetDocumentView save functionality', () => {
         expect(outputDivAfter).toBeTruthy();
     });
 
-    it('should set save: true in document-change when View tab is clicked', async () => {
+    it('should set save: false in document-change when View tab is clicked (dirty flag only, no VS Code save)', async () => {
         vi.useFakeTimers({ shouldAdvanceTime: true });
         try {
             const eventSpy = vi.fn();
@@ -209,7 +209,7 @@ describe('SpreadsheetDocumentView save functionality', () => {
             // Change content
             easymde.value('Changed Content');
 
-            // Switch to View tab (calls _switchToViewTab(true))
+            // Switch to View tab (calls _switchToViewTab(false))
             const tabsAfter = element.querySelectorAll('.sdv-tab');
             (tabsAfter[0] as HTMLElement).click();
 
@@ -218,7 +218,7 @@ describe('SpreadsheetDocumentView save functionality', () => {
             expect(eventSpy).toHaveBeenCalledTimes(1);
             const detail = eventSpy.mock.calls[0][0].detail;
             expect(detail.content).toContain('Changed Content');
-            expect(detail.save).toBe(true);
+            expect(detail.save).toBe(false);
         } finally {
             vi.useRealTimers();
         }

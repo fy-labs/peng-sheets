@@ -11,6 +11,22 @@ import hljsStyles from 'highlight.js/styles/vs2015.min.css?inline';
 import EasyMDE from 'easymde';
 import { t } from '../utils/i18n';
 
+// Configure marked once at module level (NOT inside render methods).
+// marked.use() is cumulative — calling it repeatedly adds duplicate extensions
+// and degrades performance exponentially.
+marked.use(
+    markedHighlight({
+        langPrefix: 'hljs language-',
+        highlight(code, lang) {
+            if (lang && hljs.getLanguage(lang)) {
+                return hljs.highlight(code, { language: lang }).value;
+            }
+            return hljs.highlightAuto(code).value;
+        }
+    }) as marked.MarkedExtension
+);
+marked.setOptions({ gfm: true, breaks: false });
+
 @customElement('spreadsheet-document-view')
 export class SpreadsheetDocumentView extends LitElement {
     protected createRenderRoot() {
@@ -47,6 +63,7 @@ export class SpreadsheetDocumentView extends LitElement {
     private _debounceTimer: number | null = null;
     private _easymde: EasyMDE | null = null;
     private _resizeObserver: ResizeObserver | null = null;
+    private _editorHost: HTMLDivElement | null = null;
 
     protected willUpdate(changedProperties: PropertyValues): void {
         super.willUpdate(changedProperties);
@@ -56,6 +73,17 @@ export class SpreadsheetDocumentView extends LitElement {
         // with a stale prop value.
         if (changedProperties.has('content') && this._activeTab === 'view' && this._editContent === null) {
             this._editContent = this.content;
+        }
+    }
+
+    protected firstUpdated(): void {
+        const container = this.querySelector('.sdv-container') as HTMLElement;
+        if (container) {
+            this._editorHost = document.createElement('div');
+            this._editorHost.className = 'edit-container';
+            this._editorHost.setAttribute('role', 'tabpanel');
+            this._editorHost.style.display = 'none';
+            container.appendChild(this._editorHost);
         }
     }
 
@@ -80,22 +108,6 @@ export class SpreadsheetDocumentView extends LitElement {
         const fullContent = this._editContent !== null ? this._editContent : this._getFullContent(false);
         if (!fullContent.trim()) return `<p><em>${t('clickToEdit')}...</em></p>`;
 
-        marked.use(
-            markedHighlight({
-                langPrefix: 'hljs language-',
-                highlight(code, lang) {
-                    if (lang && hljs.getLanguage(lang)) {
-                        return hljs.highlight(code, { language: lang }).value;
-                    }
-                    return hljs.highlightAuto(code).value;
-                }
-            }) as marked.MarkedExtension
-        );
-        marked.setOptions({
-            gfm: true,
-            breaks: false
-        });
-
         try {
             return marked.parse(fullContent) as string;
         } catch (error) {
@@ -116,147 +128,155 @@ export class SpreadsheetDocumentView extends LitElement {
 
         await this.updateComplete;
 
-        const textarea = this.querySelector('textarea.editor') as HTMLTextAreaElement;
-        if (textarea && !this._easymde) {
-            this._easymde = new EasyMDE({
-                element: textarea,
-                initialValue: this._editContent ?? this._getFullContent(false),
-                autoDownloadFontAwesome: false,
-                spellChecker: false,
-                autofocus: true,
-                status: false,
-                minHeight: '400px',
-                toolbar: [
-                    {
-                        name: 'bold',
-                        action: EasyMDE.toggleBold,
-                        className: 'easymde-icon',
-                        title: t('toolbarBold'),
-                        icon: '<span class="codicon codicon-bold"></span>'
-                    },
-                    {
-                        name: 'italic',
-                        action: EasyMDE.toggleItalic,
-                        className: 'easymde-icon',
-                        title: t('toolbarItalic'),
-                        icon: '<span class="codicon codicon-italic"></span>'
-                    },
-                    {
-                        name: 'heading',
-                        action: EasyMDE.toggleHeadingSmaller,
-                        className: 'easymde-icon',
-                        title: t('toolbarHeading'),
-                        icon: '<span class="codicon codicon-text-size"></span>'
-                    },
-                    '|',
-                    {
-                        name: 'quote',
-                        action: EasyMDE.toggleBlockquote,
-                        className: 'easymde-icon',
-                        title: t('toolbarQuote'),
-                        icon: '<span class="codicon codicon-quote"></span>'
-                    },
-                    {
-                        name: 'unordered-list',
-                        action: EasyMDE.toggleUnorderedList,
-                        className: 'easymde-icon',
-                        title: t('toolbarUnorderedList'),
-                        icon: '<span class="codicon codicon-list-unordered"></span>'
-                    },
-                    {
-                        name: 'ordered-list',
-                        action: EasyMDE.toggleOrderedList,
-                        className: 'easymde-icon',
-                        title: t('toolbarOrderedList'),
-                        icon: '<span class="codicon codicon-list-ordered"></span>'
-                    },
-                    '|',
-                    {
-                        name: 'link',
-                        action: EasyMDE.drawLink,
-                        className: 'easymde-icon',
-                        title: t('toolbarLink'),
-                        icon: '<span class="codicon codicon-link"></span>'
-                    },
-                    {
-                        name: 'image',
-                        action: EasyMDE.drawImage,
-                        className: 'easymde-icon',
-                        title: t('toolbarImage'),
-                        icon: '<span class="codicon codicon-file-media"></span>'
-                    }
-                ],
-                uploadImage: true,
-                imageAccept: 'image/png, image/jpeg, image/gif, image/webp',
-                imageUploadFunction: async (
-                    file: File,
-                    onSuccess: (url: string) => void,
-                    onError: (error: string) => void
-                ) => {
-                    try {
-                        const buffer = await file.arrayBuffer();
-                        const base64 = btoa(
-                            new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-                        );
+        if (this._editorHost) {
+            // Show the editor host (lives outside Lit template, so no parts-marker risk)
+            this._editorHost.style.display = '';
 
-                        // Send message to extension host to save the image
-                        const messageId = Math.random().toString(36).substring(7);
-                        this.dispatchEvent(
-                            new CustomEvent('toolbar-action', {
-                                bubbles: true,
-                                composed: true,
-                                detail: {
-                                    action: 'saveImage',
-                                    messageId,
-                                    fileName: file.name,
-                                    fileData: base64
+            if (!this._easymde) {
+                // Create textarea manually inside _editorHost on first activation
+                const textarea = document.createElement('textarea');
+                textarea.className = 'editor';
+                this._editorHost.appendChild(textarea);
+
+                this._easymde = new EasyMDE({
+                    element: textarea,
+                    initialValue: this._editContent ?? this._getFullContent(false),
+                    autoDownloadFontAwesome: false,
+                    spellChecker: false,
+                    autofocus: true,
+                    status: false,
+                    minHeight: '400px',
+                    toolbar: [
+                        {
+                            name: 'bold',
+                            action: EasyMDE.toggleBold,
+                            className: 'easymde-icon',
+                            title: t('toolbarBold'),
+                            icon: '<span class="codicon codicon-bold"></span>'
+                        },
+                        {
+                            name: 'italic',
+                            action: EasyMDE.toggleItalic,
+                            className: 'easymde-icon',
+                            title: t('toolbarItalic'),
+                            icon: '<span class="codicon codicon-italic"></span>'
+                        },
+                        {
+                            name: 'heading',
+                            action: EasyMDE.toggleHeadingSmaller,
+                            className: 'easymde-icon',
+                            title: t('toolbarHeading'),
+                            icon: '<span class="codicon codicon-text-size"></span>'
+                        },
+                        '|',
+                        {
+                            name: 'quote',
+                            action: EasyMDE.toggleBlockquote,
+                            className: 'easymde-icon',
+                            title: t('toolbarQuote'),
+                            icon: '<span class="codicon codicon-quote"></span>'
+                        },
+                        {
+                            name: 'unordered-list',
+                            action: EasyMDE.toggleUnorderedList,
+                            className: 'easymde-icon',
+                            title: t('toolbarUnorderedList'),
+                            icon: '<span class="codicon codicon-list-unordered"></span>'
+                        },
+                        {
+                            name: 'ordered-list',
+                            action: EasyMDE.toggleOrderedList,
+                            className: 'easymde-icon',
+                            title: t('toolbarOrderedList'),
+                            icon: '<span class="codicon codicon-list-ordered"></span>'
+                        },
+                        '|',
+                        {
+                            name: 'link',
+                            action: EasyMDE.drawLink,
+                            className: 'easymde-icon',
+                            title: t('toolbarLink'),
+                            icon: '<span class="codicon codicon-link"></span>'
+                        },
+                        {
+                            name: 'image',
+                            action: EasyMDE.drawImage,
+                            className: 'easymde-icon',
+                            title: t('toolbarImage'),
+                            icon: '<span class="codicon codicon-file-media"></span>'
+                        }
+                    ],
+                    uploadImage: true,
+                    imageAccept: 'image/png, image/jpeg, image/gif, image/webp',
+                    imageUploadFunction: async (
+                        file: File,
+                        onSuccess: (url: string) => void,
+                        onError: (error: string) => void
+                    ) => {
+                        try {
+                            const buffer = await file.arrayBuffer();
+                            const base64 = btoa(
+                                new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+                            );
+
+                            // Send message to extension host to save the image
+                            const messageId = Math.random().toString(36).substring(7);
+                            this.dispatchEvent(
+                                new CustomEvent('toolbar-action', {
+                                    bubbles: true,
+                                    composed: true,
+                                    detail: {
+                                        action: 'saveImage',
+                                        messageId,
+                                        fileName: file.name,
+                                        fileData: base64
+                                    }
+                                })
+                            );
+
+                            // Wait for response via a global window event listener
+                            const handleImageResponse = (e: Event) => {
+                                const customEvent = e as CustomEvent;
+                                if (customEvent.detail.messageId === messageId) {
+                                    window.removeEventListener('imageSaved', handleImageResponse);
+                                    if (customEvent.detail.success) {
+                                        onSuccess(customEvent.detail.url);
+                                    } else {
+                                        onError(customEvent.detail.error || 'Failed to upload image');
+                                    }
                                 }
-                            })
-                        );
-
-                        // Wait for response (a real implementation would listen to a global event or message)
-                        // For now we will just use a global window callback or a custom event listener
-                        const handleImageResponse = (e: Event) => {
-                            const customEvent = e as CustomEvent;
-                            if (customEvent.detail.messageId === messageId) {
-                                window.removeEventListener('imageSaved', handleImageResponse);
-                                if (customEvent.detail.success) {
-                                    onSuccess(customEvent.detail.url);
-                                } else {
-                                    onError(customEvent.detail.error || 'Failed to upload image');
-                                }
-                            }
-                        };
-                        window.addEventListener('imageSaved', handleImageResponse);
-                    } catch (e) {
-                        onError('Failed to process image');
+                            };
+                            window.addEventListener('imageSaved', handleImageResponse);
+                        } catch (e) {
+                            onError('Failed to process image');
+                        }
                     }
-                }
-            });
-
-            this._easymde.codemirror.on('change', () => {
-                this._editContent = this._easymde!.value();
-            });
-
-            // Handle Escape key inside CodeMirror
-            this._easymde.codemirror.setOption('extraKeys', {
-                Esc: () => {
-                    this._switchToViewTab(false);
-                }
-            });
-
-            // Make EasyMDE toolbar sticky below .sdv-title-bar + .sdv-tab-bar
-            this._updateStickyPositions();
-
-            // Watch for resize changes
-            if (typeof ResizeObserver !== 'undefined') {
-                this._resizeObserver = new ResizeObserver(() => {
-                    this._updateStickyPositions();
                 });
-                const titleBar = this.querySelector('.sdv-title-bar') as HTMLElement;
-                const tabBar = this.querySelector('.sdv-tab-bar') as HTMLElement;
-                if (titleBar) this._resizeObserver.observe(titleBar);
-                if (tabBar) this._resizeObserver.observe(tabBar);
+
+                this._easymde.codemirror.on('change', () => {
+                    this._editContent = this._easymde!.value();
+                });
+
+                // Handle Escape key inside CodeMirror
+                this._easymde.codemirror.setOption('extraKeys', {
+                    Esc: () => {
+                        this._switchToViewTab(false);
+                    }
+                });
+
+                // Make EasyMDE toolbar sticky below .sdv-title-bar + .sdv-tab-bar
+                this._updateStickyPositions();
+
+                // Watch for resize changes
+                if (typeof ResizeObserver !== 'undefined') {
+                    this._resizeObserver = new ResizeObserver(() => {
+                        this._updateStickyPositions();
+                    });
+                    const titleBar = this.querySelector('.sdv-title-bar') as HTMLElement;
+                    const tabBar = this.querySelector('.sdv-tab-bar') as HTMLElement;
+                    if (titleBar) this._resizeObserver.observe(titleBar);
+                    if (tabBar) this._resizeObserver.observe(tabBar);
+                }
             }
         }
     }
@@ -266,19 +286,21 @@ export class SpreadsheetDocumentView extends LitElement {
 
         if (this._easymde) {
             this._editContent = this._easymde.value();
-            this._easymde.toTextArea();
-            this._easymde = null;
+            // Do NOT call toTextArea() -- EasyMDE stays alive in _editorHost.
+            // Only toggling display avoids any DOM mutations to Lit-managed nodes.
         }
 
-        if (this._resizeObserver) {
-            this._resizeObserver.disconnect();
-            this._resizeObserver = null;
+        // Hide the editor host (outside Lit template, so safe to manipulate directly)
+        if (this._editorHost) {
+            this._editorHost.style.display = 'none';
         }
 
         this._activeTab = 'view';
         const currentFullContent = this._getFullContent(false);
 
-        if (this._editContent !== currentFullContent) {
+        // EasyMDE/CodeMirror normalises text by appending a trailing newline.
+        // Trim both sides before comparing to avoid false-positive change detection.
+        if (this._editContent?.trimEnd() !== currentFullContent.trimEnd()) {
             this._saveContent(shouldSave);
         } else if (shouldSave) {
             this.dispatchEvent(
@@ -603,7 +625,7 @@ export class SpreadsheetDocumentView extends LitElement {
                     height: auto;
                 }
             </style>
-            <div class="container spreadsheet-document-view-container">
+            <div class="sdv-container container spreadsheet-document-view-container">
                 <!-- Title bar (hidden for root tab) -->
                 ${!this.isRootTab
                     ? html`
@@ -620,7 +642,7 @@ export class SpreadsheetDocumentView extends LitElement {
                         role="tab"
                         aria-selected="${this._activeTab === 'view'}"
                         aria-label="${t('tabViewAriaLabel')}"
-                        @click=${() => this._switchToViewTab(true)}
+                        @click=${() => this._switchToViewTab(false)}
                     >
                         ${t('tabView')}
                     </button>
@@ -635,17 +657,16 @@ export class SpreadsheetDocumentView extends LitElement {
                     </button>
                 </div>
 
-                <!-- Tab content -->
-                ${this._activeTab === 'write'
+                <!-- Tab content: only the view-mode output is Lit-managed.
+                     The write-mode editor host (_editorHost) is created outside
+                     Lit's template in firstUpdated() to avoid parts-marker corruption
+                     by EasyMDE's DOM operations. -->
+                ${this._activeTab === 'view'
                     ? html`
-                          <div class="edit-container" role="tabpanel">
-                              <textarea class="editor"></textarea>
-                          </div>
-                      `
-                    : html`
                           <div class="output" role="tabpanel">${unsafeHTML(this._getRenderedContent())}</div>
                           <div class="scroll-spacer"></div>
-                      `}
+                      `
+                    : html``}
             </div>
         `;
     }
@@ -662,6 +683,10 @@ export class SpreadsheetDocumentView extends LitElement {
         if (this._resizeObserver) {
             this._resizeObserver.disconnect();
             this._resizeObserver = null;
+        }
+        if (this._editorHost) {
+            this._editorHost.remove();
+            this._editorHost = null;
         }
     }
 }
