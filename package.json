@@ -58,6 +58,10 @@
             {
                 "command": "peng-sheets.insertCopiedCells",
                 "title": "Insert Copied Cells"
+            },
+            {
+                "command": "peng-sheets.editorAction",
+                "title": "Editor Action"
             }
         ],
         "menus": {
@@ -89,6 +93,34 @@
             }
         ],
         "keybindings": [
+            {
+                "key": "ctrl+b",
+                "mac": "cmd+b",
+                "command": "peng-sheets.editorAction",
+                "args": { "action": "bold" },
+                "when": "activeCustomEditorId == 'peng-sheets.editor'"
+            },
+            {
+                "key": "ctrl+i",
+                "mac": "cmd+i",
+                "command": "peng-sheets.editorAction",
+                "args": { "action": "italic" },
+                "when": "activeCustomEditorId == 'peng-sheets.editor'"
+            },
+            {
+                "key": "ctrl+h",
+                "mac": "cmd+h",
+                "command": "peng-sheets.editorAction",
+                "args": { "action": "heading" },
+                "when": "activeCustomEditorId == 'peng-sheets.editor'"
+            },
+            {
+                "key": "ctrl+k",
+                "mac": "cmd+k",
+                "command": "peng-sheets.editorAction",
+                "args": { "action": "link" },
+                "when": "activeCustomEditorId == 'peng-sheets.editor'"
+            },
             {
                 "key": "ctrl+;",
                 "mac": "cmd+;",

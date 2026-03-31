@@ -525,6 +525,14 @@ export class GlobalEventController implements ReactiveController {
                 // Trigger insert copied cells action (used for Ctrl+Shift+= shortcut from extension)
                 window.dispatchEvent(new CustomEvent('insert-copied-cells-at-selection'));
                 break;
+            case 'editorAction':
+                // Route editor formatting actions to the active document view (used for bold/italic/heading/link shortcuts)
+                window.dispatchEvent(
+                    new CustomEvent('editor-action', {
+                        detail: { action: message.action }
+                    })
+                );
+                break;
         }
     }
 

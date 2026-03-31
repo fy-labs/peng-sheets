@@ -82,6 +82,16 @@ export function activate(context: vscode.ExtensionContext) {
             });
         })
     );
+
+    // Editor action command: route keyboard shortcuts to the active webview's EasyMDE
+    context.subscriptions.push(
+        vscode.commands.registerCommand('peng-sheets.editorAction', (args: { action: string }) => {
+            SpreadsheetEditorProvider.postMessageToActive({
+                type: 'editorAction',
+                action: args.action
+            });
+        })
+    );
 }
 
 export function deactivate() {}

@@ -27,6 +27,18 @@ marked.use(
 );
 marked.setOptions({ gfm: true, breaks: false });
 
+/**
+ * Generate meaningful alt text from a filename.
+ * Format: "{sanitized basename} - {YYYY-MM-DD HH:mm}"
+ */
+export function generateImageAltText(fileName: string): string {
+    const baseName = fileName.replace(/\.[^.]+$/, '');
+    const sanitized = baseName.replace(/-\d{10,}$/, '');
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 16).replace('T', ' ');
+    return `${sanitized} - ${dateStr}`;
+}
+
 @customElement('spreadsheet-document-view')
 export class SpreadsheetDocumentView extends LitElement {
     protected createRenderRoot() {
@@ -64,6 +76,15 @@ export class SpreadsheetDocumentView extends LitElement {
     private _easymde: EasyMDE | null = null;
     private _resizeObserver: ResizeObserver | null = null;
     private _editorHost: HTMLDivElement | null = null;
+    private _boundEditorAction = (e: Event) => {
+        const action = (e as CustomEvent<{ action: string }>).detail.action;
+        this.triggerEditorAction(action);
+    };
+
+    connectedCallback(): void {
+        super.connectedCallback();
+        window.addEventListener('editor-action', this._boundEditorAction);
+    }
 
     protected willUpdate(changedProperties: PropertyValues): void {
         super.willUpdate(changedProperties);
@@ -240,7 +261,11 @@ export class SpreadsheetDocumentView extends LitElement {
                                 if (customEvent.detail.messageId === messageId) {
                                     window.removeEventListener('imageSaved', handleImageResponse);
                                     if (customEvent.detail.success) {
-                                        onSuccess(customEvent.detail.url);
+                                        const url = customEvent.detail.url;
+                                        const altText = generateImageAltText(file.name);
+                                        const cm = this._easymde!.codemirror;
+                                        cm.replaceSelection(`![${altText}](${url})`);
+                                        cm.focus();
                                     } else {
                                         onError(customEvent.detail.error || 'Failed to upload image');
                                     }
@@ -671,8 +696,27 @@ export class SpreadsheetDocumentView extends LitElement {
         `;
     }
 
+    triggerEditorAction(action: string): void {
+        if (!this._easymde || this._activeTab !== 'write') return;
+        switch (action) {
+            case 'bold':
+                EasyMDE.toggleBold(this._easymde);
+                break;
+            case 'italic':
+                EasyMDE.toggleItalic(this._easymde);
+                break;
+            case 'heading':
+                EasyMDE.toggleHeadingSmaller(this._easymde);
+                break;
+            case 'link':
+                EasyMDE.drawLink(this._easymde);
+                break;
+        }
+    }
+
     disconnectedCallback(): void {
         super.disconnectedCallback();
+        window.removeEventListener('editor-action', this._boundEditorAction);
         if (this._debounceTimer) {
             window.clearTimeout(this._debounceTimer);
         }

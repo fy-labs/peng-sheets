@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
+import { generateImageAltText } from '../../../components/spreadsheet-document-view.js';
 
 // Mock ResizeObserver for jsdom
 beforeAll(() => {
@@ -16,7 +17,9 @@ vi.mock('easymde', () => {
         this.options = options;
         this.codemirror = {
             on: vi.fn(),
-            setOption: vi.fn()
+            setOption: vi.fn(),
+            replaceSelection: vi.fn(),
+            focus: vi.fn()
         };
         this.value = vi.fn().mockReturnValue('');
         this.toTextArea = vi.fn();
@@ -120,11 +123,8 @@ describe('SpreadsheetDocumentView image saving', () => {
         // Mock arrayBuffer for JSDOM
         file.arrayBuffer = async () => new TextEncoder().encode('fake image data').buffer;
 
-        let successUrl = '';
         let errorMsg = '';
-        const onSuccess = (url: string) => {
-            successUrl = url;
-        };
+        const onSuccess = vi.fn();
         const onError = (msg: string) => {
             errorMsg = msg;
         };
@@ -156,7 +156,143 @@ describe('SpreadsheetDocumentView image saving', () => {
         });
         window.dispatchEvent(responseEvent);
 
-        expect(successUrl).toBe('./images/test.png');
+        // Verify CodeMirror direct insertion is used instead of onSuccess
+        const cm = (element as any)._easymde.codemirror;
+        expect(cm.replaceSelection).toHaveBeenCalledOnce();
+        const insertedText = (cm.replaceSelection as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+        expect(insertedText).toMatch(/^!\[.+\]\(\.\/images\/test\.png\)$/);
+        expect(cm.focus).toHaveBeenCalledOnce();
+        expect(onSuccess).not.toHaveBeenCalled();
         expect(errorMsg).toBe('');
+    });
+});
+
+describe('generateImageAltText', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-03-30T14:30:00.000Z'));
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('generates alt text from filename with timestamp suffix removed', () => {
+        expect(generateImageAltText('image-1774851129595.png')).toBe('image - 2026-03-30 14:30');
+    });
+
+    it('generates alt text from simple filename', () => {
+        expect(generateImageAltText('screenshot.png')).toBe('screenshot - 2026-03-30 14:30');
+    });
+
+    it('generates alt text from filename with spaces', () => {
+        expect(generateImageAltText('my photo.jpg')).toBe('my photo - 2026-03-30 14:30');
+    });
+
+    it('generates alt text from filename without extension', () => {
+        expect(generateImageAltText('image')).toBe('image - 2026-03-30 14:30');
+    });
+});
+
+describe('image upload with direct CodeMirror insertion', () => {
+    let container: HTMLElement;
+    let element: HTMLElement;
+
+    beforeEach(async () => {
+        Range.prototype.getBoundingClientRect = () => ({
+            bottom: 0,
+            height: 0,
+            left: 0,
+            right: 0,
+            top: 0,
+            width: 0,
+            x: 0,
+            y: 0,
+            toJSON() {
+                return this;
+            }
+        });
+
+        Range.prototype.getClientRects = () => {
+            return { length: 0, item: () => null, [Symbol.iterator]: function* () {} } as unknown as DOMRectList;
+        };
+
+        await import('../../../components/spreadsheet-document-view.js');
+
+        container = document.createElement('div');
+        document.body.appendChild(container);
+
+        element = document.createElement('spreadsheet-document-view') as HTMLElement;
+        (element as any).title = 'Test Doc';
+        (element as any).content = '# Hello';
+        (element as any).sectionIndex = 0;
+        container.appendChild(element);
+
+        await (element as any).updateComplete;
+    });
+
+    afterEach(() => {
+        container.remove();
+        vi.clearAllMocks();
+    });
+
+    it('inserts markdown with alt text via cm.replaceSelection instead of onSuccess', async () => {
+        // Switch to Write tab to initialize EasyMDE
+        const tabs = element.querySelectorAll('.sdv-tab');
+        const writeTab = tabs[1] as HTMLElement;
+        writeTab.click();
+        await (element as any).updateComplete;
+        await new Promise((r) => setTimeout(r, 0));
+        await (element as any).updateComplete;
+
+        const easymde = (element as any)._easymde;
+        expect(easymde).toBeTruthy();
+
+        const options = easymde.options;
+        expect(typeof options.imageUploadFunction).toBe('function');
+
+        const file = new File(['fake image data'], 'image-1774851129595.png', { type: 'image/png' });
+        file.arrayBuffer = async () => new TextEncoder().encode('fake image data').buffer;
+
+        const onSuccess = vi.fn();
+        const onError = vi.fn();
+
+        let dispatchedMessageId = '';
+        element.addEventListener('toolbar-action', (e: Event) => {
+            const ce = e as CustomEvent;
+            if (ce.detail?.action === 'saveImage') {
+                dispatchedMessageId = ce.detail.messageId;
+            }
+        });
+
+        try {
+            await options.imageUploadFunction(file, onSuccess, onError);
+        } catch (e) {
+            // ignore
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        expect(dispatchedMessageId).toBeTruthy();
+
+        // Simulate extension host responding
+        const responseEvent = new CustomEvent('imageSaved', {
+            detail: {
+                messageId: dispatchedMessageId,
+                success: true,
+                url: './images/image-1774851129595.png'
+            }
+        });
+        window.dispatchEvent(responseEvent);
+
+        const cm = easymde.codemirror;
+        expect(cm.replaceSelection).toHaveBeenCalledOnce();
+        // Verify format: ![<sanitized name> - <YYYY-MM-DD HH:mm>](<url>)
+        const insertedText = (cm.replaceSelection as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+        const expectedPattern =
+            /^!\[image - \d{4}-\d{2}-\d{2} \d{2}:\d{2}\]\(\.\/images\/image-1774851129595\.png\)$/;
+        expect(insertedText).toMatch(expectedPattern);
+        expect(cm.focus).toHaveBeenCalledOnce();
+        expect(onSuccess).not.toHaveBeenCalled();
     });
 });
