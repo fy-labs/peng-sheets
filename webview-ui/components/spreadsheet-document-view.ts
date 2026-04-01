@@ -31,6 +31,19 @@ marked.use(
 marked.setOptions({ gfm: true, breaks: false });
 
 /**
+ * Parse header prefix from headerText.
+ * Returns { prefix, text } where prefix is the markdown heading markers + space
+ * (e.g. "## ") and text is the remaining title text.
+ */
+export function parseHeaderPrefix(headerText: string): { prefix: string; text: string } {
+    const match = headerText.match(/^(#{1,6}\s)/);
+    if (match) {
+        return { prefix: match[1], text: headerText.slice(match[1].length) };
+    }
+    return { prefix: '', text: headerText };
+}
+
+/**
  * Generate meaningful alt text from a filename.
  * Format: "{sanitized basename} - {YYYY-MM-DD HH:mm}"
  */
@@ -75,6 +88,9 @@ export class SpreadsheetDocumentView extends LitElement {
 
     private _editContent: string | null = null;
 
+    /** Edited title text (without header prefix). null means not yet edited. */
+    private _editTitle: string | null = null;
+
     private _debouncedNotifyDirty = debounce(() => this._doSaveContent(false), DIRTY_NOTIFY_DEBOUNCE_MS);
 
     private _easymde: EasyMDE | null = null;
@@ -98,6 +114,18 @@ export class SpreadsheetDocumentView extends LitElement {
         // with a stale prop value.
         if (changedProperties.has('content') && this._activeTab === 'view' && this._editContent === null) {
             this._editContent = this.content;
+        }
+        // When the parent switches tabs, title/content props change while _activeTab
+        // is still 'write'. Reset to view mode so the new tab's content is displayed.
+        if (this._activeTab === 'write' && (changedProperties.has('title') || changedProperties.has('content'))) {
+            this._switchToViewTab(false);
+        }
+        // Reset _editTitle when switching back to view mode or when headerText changes
+        if (
+            (changedProperties.has('_activeTab') && this._activeTab === 'view') ||
+            changedProperties.has('headerText')
+        ) {
+            this._editTitle = null;
         }
     }
 
@@ -148,6 +176,10 @@ export class SpreadsheetDocumentView extends LitElement {
         // On subsequent entries, preserve whatever the user had already typed.
         if (this._editContent === null) {
             this._editContent = this.isRootTab ? this.content : this._getFullContent(false);
+        }
+        // Initialize _editTitle on first Write mode entry
+        if (this._editTitle === null) {
+            this._editTitle = parseHeaderPrefix(this.headerText || this.title).text;
         }
         this._activeTab = 'write';
 
@@ -325,10 +357,11 @@ export class SpreadsheetDocumentView extends LitElement {
             this._editorHost.style.display = 'none';
         }
 
-        this._activeTab = 'view';
-
-        // Flush any pending dirty notification immediately (no-op if nothing pending)
+        // Flush before resetting _editTitle so _extractTitleAndBody still sees the edit
         this._debouncedNotifyDirty.flush();
+
+        this._editTitle = null;
+        this._activeTab = 'view';
 
         if (shouldSave) {
             this.dispatchEvent(
@@ -362,8 +395,26 @@ export class SpreadsheetDocumentView extends LitElement {
 
     private _extractTitleAndBody(content: string): { title: string; body: string } {
         // Edit mode no longer includes header in textarea,
-        // so content IS the body. Title is preserved from the component property.
-        return { title: this.title, body: content };
+        // so content IS the body. Use _editTitle if set (user edited the title),
+        // otherwise fall back to the component property.
+        const title = this._editTitle !== null ? this._editTitle : this.title;
+        return { title, body: content };
+    }
+
+    private _getTitlePrefix(): string {
+        return parseHeaderPrefix(this.headerText || this.title).prefix;
+    }
+
+    private _onTitleInput(e: Event): void {
+        const input = e.target as HTMLInputElement;
+        this._editTitle = input.value;
+        this._debouncedNotifyDirty();
+    }
+
+    private _onTitleChange(e: Event): void {
+        const input = e.target as HTMLInputElement;
+        this._editTitle = input.value;
+        this._debouncedNotifyDirty.flush();
     }
 
     private _doSaveContent(shouldSave: boolean = false): void {
@@ -652,7 +703,22 @@ export class SpreadsheetDocumentView extends LitElement {
                 ${!this.isRootTab
                     ? html`
                           <div class="sdv-title-bar">
-                              <div class="sdv-title-text">${this.headerText || this.title}</div>
+                              ${this._activeTab === 'write'
+                                  ? html`
+                                        ${this._getTitlePrefix()
+                                            ? html`<span class="sdv-title-prefix">${this._getTitlePrefix()}</span>`
+                                            : html``}
+                                        <input
+                                            class="sdv-title-input"
+                                            type="text"
+                                            .value="${this._editTitle ??
+                                            parseHeaderPrefix(this.headerText || this.title).text}"
+                                            @input="${this._onTitleInput}"
+                                            @change="${this._onTitleChange}"
+                                            aria-label="Edit document title"
+                                        />
+                                    `
+                                  : html`<div class="sdv-title-text">${this.headerText || this.title}</div>`}
                           </div>
                       `
                     : html``}

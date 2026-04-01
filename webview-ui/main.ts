@@ -659,8 +659,16 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
             }
             this.spreadsheetService.endBatch();
 
+            // Frontmatter title rename must be outside the batch above
+            if (isFrontmatterTab && detail.title && detail.title !== activeTab.title) {
+                this.spreadsheetService.renameFrontmatterTitle(detail.title);
+            }
+
             // Update local state including title
             activeTab.title = newTitle;
+            if (isDocumentJSON(activeTab.data)) {
+                activeTab.data.title = newTitle;
+            }
             if (isDocumentJSON(activeTab.data)) {
                 activeTab.data.content = detail.content;
             } else {

@@ -44,6 +44,37 @@ spreadsheet-document-view {
     flex: 1;
 }
 
+/* Title prefix (read-only header level marker) */
+.sdv-title-prefix {
+    padding: 0.6rem 0 0.6rem 0.5rem;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 1.25em;
+    font-weight: bold;
+    color: var(--vscode-disabledForeground);
+    flex-shrink: 0;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* Editable title input in write mode */
+.sdv-title-input {
+    flex: 1;
+    padding: 0.6rem 0.5rem;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 1.25em;
+    font-weight: bold;
+    color: var(--vscode-editor-foreground);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    outline: none;
+    min-width: 0;
+}
+
+.sdv-title-input:focus {
+    border-color: var(--vscode-focusBorder);
+}
+
 /* Tab bar — sticky directly below title bar */
 .sdv-tab-bar {
     position: sticky;
