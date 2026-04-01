@@ -289,8 +289,7 @@ describe('image upload with direct CodeMirror insertion', () => {
         expect(cm.replaceSelection).toHaveBeenCalledOnce();
         // Verify format: ![<sanitized name> - <YYYY-MM-DD HH:mm>](<url>)
         const insertedText = (cm.replaceSelection as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-        const expectedPattern =
-            /^!\[image - \d{4}-\d{2}-\d{2} \d{2}:\d{2}\]\(\.\/images\/image-1774851129595\.png\)$/;
+        const expectedPattern = /^!\[image - \d{4}-\d{2}-\d{2} \d{2}:\d{2}\]\(\.\/images\/image-1774851129595\.png\)$/;
         expect(insertedText).toMatch(expectedPattern);
         expect(cm.focus).toHaveBeenCalledOnce();
         expect(onSuccess).not.toHaveBeenCalled();
