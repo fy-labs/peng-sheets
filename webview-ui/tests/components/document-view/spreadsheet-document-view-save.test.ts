@@ -9,13 +9,17 @@ beforeAll(() => {
     };
 });
 
-// EasyMDE mock — captures options and simulates toolbar creation
+// EasyMDE mock — captures options, simulates toolbar creation, and captures the 'change' callback
 vi.mock('easymde', () => {
     const EasyMDE = vi.fn().mockImplementation(function (this: any, options: any) {
         this._options = options;
         this.options = options;
         this.codemirror = {
-            on: vi.fn(),
+            on: vi.fn((event: string, cb: () => void) => {
+                if (event === 'change') {
+                    this._changeCallback = cb;
+                }
+            }),
             setOption: vi.fn()
         };
         // value() returns whatever was set via value(newVal), or initialValue
@@ -142,14 +146,17 @@ describe('SpreadsheetDocumentView save functionality', () => {
             const easymde = (element as any)._easymde;
             expect(easymde).toBeTruthy();
 
-            // Modify the content via the mock
+            // Simulate user typing: set the value AND fire the change callback
+            // (mirrors what CodeMirror does in production — 'change' handler updates _editContent
+            // and schedules _debouncedNotifyDirty so that flush() has something to fire)
             easymde.value('New text');
+            easymde._changeCallback?.();
 
             // Switch back to View tab (calls _switchToViewTab(true))
+            // flush() fires the pending dirty notification immediately
             (element as any)._switchToViewTab(true);
             await (element as any).updateComplete;
 
-            vi.advanceTimersByTime(500);
             expect(eventSpy).toHaveBeenCalled();
             expect(eventSpy.mock.calls[0][0].detail.sectionIndex).toEqual(0);
             expect(eventSpy.mock.calls[0][0].detail.content).toEqual('New text');
@@ -206,14 +213,15 @@ describe('SpreadsheetDocumentView save functionality', () => {
 
             const easymde = (element as any)._easymde;
 
-            // Change content
+            // Simulate user typing: set value AND fire the change callback to schedule
+            // the pending dirty notification that flush() will fire on tab switch
             easymde.value('Changed Content');
+            easymde._changeCallback?.();
 
             // Switch to View tab (calls _switchToViewTab(false))
+            // flush() fires the pending dirty notification immediately (synchronously)
             const tabsAfter = element.querySelectorAll('.sdv-tab');
             (tabsAfter[0] as HTMLElement).click();
-
-            vi.advanceTimersByTime(500);
 
             expect(eventSpy).toHaveBeenCalledTimes(1);
             const detail = eventSpy.mock.calls[0][0].detail;

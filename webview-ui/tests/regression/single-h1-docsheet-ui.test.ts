@@ -16,13 +16,17 @@ beforeAll(() => {
     };
 });
 
-// EasyMDE mock — captures options for toolbar inspection
+// EasyMDE mock — captures options for toolbar inspection and the 'change' callback
 vi.mock('easymde', () => {
     const EasyMDE = vi.fn().mockImplementation(function (this: any, options: any) {
         this._options = options;
         this.options = options;
         this.codemirror = {
-            on: vi.fn(),
+            on: vi.fn((event: string, cb: () => void) => {
+                if (event === 'change') {
+                    this._changeCallback = cb;
+                }
+            }),
             setOption: vi.fn()
         };
         let _val = options?.initialValue ?? '';
@@ -243,13 +247,13 @@ describe('Bug 2: Edit mode should not include header for document tabs', () => {
         const easymde = (element as any)._easymde;
         expect(easymde).toBeTruthy();
 
-        // Edit content (no header prefix)
+        // Simulate user typing: set value AND fire the change callback to schedule
+        // the pending dirty notification that flush() will fire on tab switch
         easymde.value('Updated content');
+        easymde._changeCallback?.();
 
-        // Save via _switchToViewTab
+        // Save via _switchToViewTab — flush() fires the pending dirty notification immediately
         (element as any)._switchToViewTab(true);
-
-        vi.advanceTimersByTime(500);
 
         expect(eventSpy).toHaveBeenCalled();
         const detail = eventSpy.mock.calls[0][0].detail;

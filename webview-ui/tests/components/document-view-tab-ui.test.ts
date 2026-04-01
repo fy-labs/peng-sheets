@@ -29,7 +29,11 @@ vi.mock('easymde', () => {
     const EasyMDE = vi.fn().mockImplementation(function (this: any, options: any) {
         this._options = options;
         this.codemirror = {
-            on: vi.fn(),
+            on: vi.fn((event: string, cb: () => void) => {
+                if (event === 'change') {
+                    this._changeCallback = cb;
+                }
+            }),
             setOption: vi.fn()
         };
         this.value = vi.fn().mockReturnValue(options?.initialValue ?? '');
@@ -287,38 +291,40 @@ describe('SpreadsheetDocumentView - Tab UI: Escape key', () => {
     });
 
     it('should dispatch event with save: false when Escape exits Write mode', async () => {
-        const EasyMDEModule = await import('easymde');
-        const EasyMDE = (EasyMDEModule as any).default;
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+            const EasyMDEModule = await import('easymde');
+            const EasyMDE = (EasyMDEModule as any).default;
 
-        // Switch to Write
-        const tabs = element.querySelectorAll('.sdv-tab');
-        (tabs[1] as HTMLButtonElement).click();
-        await element.updateComplete;
-        await new Promise((r) => setTimeout(r, 0));
-        await element.updateComplete;
+            // Switch to Write
+            const tabs = element.querySelectorAll('.sdv-tab');
+            (tabs[1] as HTMLButtonElement).click();
+            await element.updateComplete;
+            await new Promise((r) => setTimeout(r, 0));
+            await element.updateComplete;
 
-        // Modify content via mock
-        const instance = EasyMDE.mock.instances[EasyMDE.mock.instances.length - 1];
-        instance.value.mockReturnValue('Modified via Escape');
+            // Simulate user typing: set value AND fire the change callback to schedule
+            // the pending dirty notification that flush() will fire when Escape is pressed
+            const instance = EasyMDE.mock.instances[EasyMDE.mock.instances.length - 1];
+            instance.value.mockReturnValue('Modified via Escape');
+            instance._changeCallback?.();
 
-        // Listen for event
-        const eventSpy = vi.fn();
-        element.addEventListener('document-change', eventSpy);
+            // Listen for event
+            const eventSpy = vi.fn();
+            element.addEventListener('document-change', eventSpy);
 
-        // Get Escape handler and call it
-        const extraKeys = instance.codemirror.setOption.mock.calls.find((call: any[]) => call[0] === 'extraKeys');
-        const escHandler = extraKeys[1].Esc;
-        escHandler();
-        await element.updateComplete;
-        await new Promise((r) => setTimeout(r, 0));
-        await element.updateComplete;
+            // Get Escape handler and call it — _switchToViewTab(false) calls flush()
+            const extraKeys = instance.codemirror.setOption.mock.calls.find((call: any[]) => call[0] === 'extraKeys');
+            const escHandler = extraKeys[1].Esc;
+            escHandler();
 
-        // Wait for debounce
-        await new Promise((r) => setTimeout(r, 150));
-
-        expect(eventSpy).toHaveBeenCalled();
-        expect(eventSpy.mock.calls[0][0].detail.save).toBe(false);
-        element.removeEventListener('document-change', eventSpy);
+            // flush() dispatches the event synchronously
+            expect(eventSpy).toHaveBeenCalled();
+            expect(eventSpy.mock.calls[0][0].detail.save).toBe(false);
+            element.removeEventListener('document-change', eventSpy);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('should switch to View tab when Escape is pressed in Write mode', async () => {

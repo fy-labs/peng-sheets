@@ -10,6 +10,9 @@ import codiconsStyles from '@vscode/codicons/dist/codicon.css?inline';
 import hljsStyles from 'highlight.js/styles/vs2015.min.css?inline';
 import EasyMDE from 'easymde';
 import { t } from '../utils/i18n';
+import { debounce } from '../utils/debounce';
+
+const DIRTY_NOTIFY_DEBOUNCE_MS = 500;
 
 // Configure marked once at module level (NOT inside render methods).
 // marked.use() is cumulative — calling it repeatedly adds duplicate extensions
@@ -72,7 +75,8 @@ export class SpreadsheetDocumentView extends LitElement {
 
     private _editContent: string | null = null;
 
-    private _debounceTimer: number | null = null;
+    private _debouncedNotifyDirty = debounce(() => this._doSaveContent(false), DIRTY_NOTIFY_DEBOUNCE_MS);
+
     private _easymde: EasyMDE | null = null;
     private _resizeObserver: ResizeObserver | null = null;
     private _editorHost: HTMLDivElement | null = null;
@@ -280,6 +284,7 @@ export class SpreadsheetDocumentView extends LitElement {
 
                 this._easymde.codemirror.on('change', () => {
                     this._editContent = this._easymde!.value();
+                    this._debouncedNotifyDirty();
                 });
 
                 // Handle Escape key inside CodeMirror
@@ -321,13 +326,11 @@ export class SpreadsheetDocumentView extends LitElement {
         }
 
         this._activeTab = 'view';
-        const currentFullContent = this._getFullContent(false);
 
-        // EasyMDE/CodeMirror normalises text by appending a trailing newline.
-        // Trim both sides before comparing to avoid false-positive change detection.
-        if (this._editContent?.trimEnd() !== currentFullContent.trimEnd()) {
-            this._saveContent(shouldSave);
-        } else if (shouldSave) {
+        // Flush any pending dirty notification immediately (no-op if nothing pending)
+        this._debouncedNotifyDirty.flush();
+
+        if (shouldSave) {
             this.dispatchEvent(
                 new CustomEvent('toolbar-action', {
                     bubbles: true,
@@ -363,69 +366,63 @@ export class SpreadsheetDocumentView extends LitElement {
         return { title: this.title, body: content };
     }
 
-    private _saveContent(shouldSave: boolean = false): void {
-        console.log('SpreadsheetDocumentView: _saveContent called, shouldSave=', shouldSave);
-        if (this._debounceTimer) {
-            window.clearTimeout(this._debounceTimer);
-        }
+    private _doSaveContent(shouldSave: boolean = false): void {
+        console.log('SpreadsheetDocumentView: _doSaveContent called, shouldSave=', shouldSave);
+        // _doSaveContent is called from _debouncedNotifyDirty (either after the debounce
+        // timeout fires naturally, or via flush() on tab switch). In both cases _editContent
+        // is a string.
+        const editContent = this._editContent ?? '';
+        const { title, body } = this._extractTitleAndBody(editContent);
+        console.log(
+            'Extracted title:',
+            title,
+            'body:',
+            body,
+            'isRootTab:',
+            this.isRootTab,
+            'isDocSheet:',
+            this.isDocSheet
+        );
 
-        this._debounceTimer = window.setTimeout(() => {
-            console.log('SpreadsheetDocumentView: _saveContent timeout executing');
-            // _saveContent is only called from _switchToViewTab after _editContent has
-            // been set from _easymde.value(), so it is guaranteed to be a string here.
-            const editContent = this._editContent ?? '';
-            const { title, body } = this._extractTitleAndBody(editContent);
-            console.log(
-                'Extracted title:',
-                title,
-                'body:',
-                body,
-                'isRootTab:',
-                this.isRootTab,
-                'isDocSheet:',
-                this.isDocSheet
+        if (this.isRootTab) {
+            this.dispatchEvent(
+                new CustomEvent('root-content-change', {
+                    bubbles: true,
+                    composed: true,
+                    detail: {
+                        content: editContent,
+                        save: shouldSave
+                    }
+                })
             );
-
-            if (this.isRootTab) {
-                this.dispatchEvent(
-                    new CustomEvent('root-content-change', {
-                        bubbles: true,
-                        composed: true,
-                        detail: {
-                            content: editContent,
-                            save: shouldSave
-                        }
-                    })
-                );
-            } else if (this.isDocSheet) {
-                this.dispatchEvent(
-                    new CustomEvent('doc-sheet-change', {
-                        bubbles: true,
-                        composed: true,
-                        detail: {
-                            sheetIndex: this.sheetIndex,
-                            content: body,
-                            title: title,
-                            save: shouldSave
-                        }
-                    })
-                );
-            } else {
-                console.log('Dispatching document-change event');
-                this.dispatchEvent(
-                    new CustomEvent('document-change', {
-                        bubbles: true,
-                        composed: true,
-                        detail: {
-                            sectionIndex: this.sectionIndex,
-                            content: body,
-                            title: title,
-                            save: shouldSave
-                        }
-                    })
-                );
-            }
-        }, 100);
+        } else if (this.isDocSheet) {
+            this.dispatchEvent(
+                new CustomEvent('doc-sheet-change', {
+                    bubbles: true,
+                    composed: true,
+                    detail: {
+                        sheetIndex: this.sheetIndex,
+                        content: body,
+                        title: title,
+                        save: shouldSave
+                    }
+                })
+            );
+        } else {
+            console.log('Dispatching document-change event');
+            this.dispatchEvent(
+                new CustomEvent('document-change', {
+                    bubbles: true,
+                    composed: true,
+                    detail: {
+                        sectionIndex: this.sectionIndex,
+                        content: body,
+                        title: title,
+                        save: shouldSave
+                    }
+                })
+            );
+        }
     }
 
     render() {
@@ -717,9 +714,7 @@ export class SpreadsheetDocumentView extends LitElement {
     disconnectedCallback(): void {
         super.disconnectedCallback();
         window.removeEventListener('editor-action', this._boundEditorAction);
-        if (this._debounceTimer) {
-            window.clearTimeout(this._debounceTimer);
-        }
+        this._debouncedNotifyDirty.cancel();
         if (this._easymde) {
             this._easymde.toTextArea();
             this._easymde = null;
