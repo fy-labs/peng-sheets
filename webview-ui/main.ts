@@ -2,6 +2,7 @@ import { html, LitElement, PropertyValues, unsafeCSS } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { provideVSCodeDesignSystem } from '@vscode/webview-ui-toolkit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { keyed } from 'lit/directives/keyed.js';
 import { t } from './utils/i18n';
 import mainStyles from './styles/main.css?inline';
 
@@ -668,8 +669,6 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
             activeTab.title = newTitle;
             if (isDocumentJSON(activeTab.data)) {
                 activeTab.data.title = newTitle;
-            }
-            if (isDocumentJSON(activeTab.data)) {
                 activeTab.data.content = detail.content;
             } else {
                 // Initialize if missing or wrong type
@@ -973,16 +972,21 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                 ${activeTab.type === 'sheet' && isSheetJSON(activeTab.data)
                     ? isDocSheetType(activeTab.data as SheetJSON)
                         ? html`
-                              <spreadsheet-document-view
-                                  .title="${activeTab.title}"
-                                  .content="${getSheetContent(activeTab.data as SheetJSON)}"
-                                  .headerText="${'#'.repeat(
-                                      (this.config as Record<string, number>)?.sheetHeaderLevel ?? 2
-                                  )} ${activeTab.title}"
-                                  .isDocSheet="${true}"
-                                  .sheetIndex="${activeTab.sheetIndex}"
-                                  @toolbar-action="${this._handleToolbarAction}"
-                              ></spreadsheet-document-view>
+                              ${keyed(
+                                  `docsheet-${activeTab.sheetIndex}`,
+                                  html`
+                                      <spreadsheet-document-view
+                                          .title="${activeTab.title}"
+                                          .content="${getSheetContent(activeTab.data as SheetJSON)}"
+                                          .headerText="${'#'.repeat(
+                                              (this.config as Record<string, number>)?.sheetHeaderLevel ?? 2
+                                          )} ${activeTab.title}"
+                                          .isDocSheet="${true}"
+                                          .sheetIndex="${activeTab.sheetIndex}"
+                                          @toolbar-action="${this._handleToolbarAction}"
+                                      ></spreadsheet-document-view>
+                                  `
+                              )}
                           `
                         : html`
                               <div class="sheet-container" style="height: 100%">
@@ -1000,25 +1004,36 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                           `
                     : activeTab.type === 'document' && isDocumentJSON(activeTab.data)
                       ? html`
-                            <spreadsheet-document-view
-                                .title="${activeTab.title}"
-                                .content="${(activeTab.data as DocumentJSON).content}"
-                                .headerText="${activeTab.pinned ? activeTab.title : `# ${activeTab.title}`}"
-                                @toolbar-action="${this._handleToolbarAction}"
-                            ></spreadsheet-document-view>
+                            ${keyed(
+                                `doc-${this.activeTabIndex}`,
+                                html`
+                                    <spreadsheet-document-view
+                                        .title="${activeTab.title}"
+                                        .content="${(activeTab.data as DocumentJSON).content}"
+                                        .headerText="${activeTab.pinned ? activeTab.title : `# ${activeTab.title}`}"
+                                        @toolbar-action="${this._handleToolbarAction}"
+                                    ></spreadsheet-document-view>
+                                `
+                            )}
                         `
                       : activeTab.type === 'root'
                         ? html`
-                              <spreadsheet-document-view
-                                  .title="${activeTab.title}"
-                                  .content="${(activeTab.data as { type: 'root'; content: string })?.content ?? ''}"
-                                  .headerText="${this.markdownInput?.trimStart().startsWith('---')
-                                      ? (this.workbook?.name ?? activeTab.title)
-                                      : `# ${this.workbook?.name ?? activeTab.title}`}"
-                                  .isRootTab="${true}"
-                                  @toolbar-action="${this._handleToolbarAction}"
-                                  @root-content-change="${this._handleRootContentChange}"
-                              ></spreadsheet-document-view>
+                              ${keyed(
+                                  `root`,
+                                  html`
+                                      <spreadsheet-document-view
+                                          .title="${activeTab.title}"
+                                          .content="${(activeTab.data as { type: 'root'; content: string })?.content ??
+                                          ''}"
+                                          .headerText="${this.markdownInput?.trimStart().startsWith('---')
+                                              ? (this.workbook?.name ?? activeTab.title)
+                                              : `# ${this.workbook?.name ?? activeTab.title}`}"
+                                          .isRootTab="${true}"
+                                          @toolbar-action="${this._handleToolbarAction}"
+                                          @root-content-change="${this._handleRootContentChange}"
+                                      ></spreadsheet-document-view>
+                                  `
+                              )}
                           `
                         : html``}
                 ${activeTab.type === 'onboarding'

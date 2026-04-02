@@ -108,18 +108,6 @@ export class SpreadsheetDocumentView extends LitElement {
 
     protected willUpdate(changedProperties: PropertyValues): void {
         super.willUpdate(changedProperties);
-        // Only sync content prop into _editContent when in view mode and _editContent
-        // is still null (Write mode has never been entered). Once the user has entered
-        // Write mode (_editContent !== null), we never overwrite their in-memory edits
-        // with a stale prop value.
-        if (changedProperties.has('content') && this._activeTab === 'view' && this._editContent === null) {
-            this._editContent = this.content;
-        }
-        // When the parent switches tabs, title/content props change while _activeTab
-        // is still 'write'. Reset to view mode so the new tab's content is displayed.
-        if (this._activeTab === 'write' && (changedProperties.has('title') || changedProperties.has('content'))) {
-            this._switchToViewTab(false);
-        }
         // Reset _editTitle when switching back to view mode or when headerText changes
         if (
             (changedProperties.has('_activeTab') && this._activeTab === 'view') ||
@@ -271,6 +259,10 @@ export class SpreadsheetDocumentView extends LitElement {
                         onError: (error: string) => void
                     ) => {
                         try {
+                            // We intentionally skip onSuccess: EasyMDE's default handler inserts
+                            // ![](url) with empty alt text, but we need a descriptive alt via
+                            // generateImageAltText(). cm.replaceSelection() gives us full control.
+                            // Status bar is disabled (status: false), so no loading indicator remains.
                             const buffer = await file.arrayBuffer();
                             const base64 = btoa(
                                 new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
@@ -418,22 +410,11 @@ export class SpreadsheetDocumentView extends LitElement {
     }
 
     private _doSaveContent(shouldSave: boolean = false): void {
-        console.log('SpreadsheetDocumentView: _doSaveContent called, shouldSave=', shouldSave);
         // _doSaveContent is called from _debouncedNotifyDirty (either after the debounce
         // timeout fires naturally, or via flush() on tab switch). In both cases _editContent
         // is a string.
         const editContent = this._editContent ?? '';
         const { title, body } = this._extractTitleAndBody(editContent);
-        console.log(
-            'Extracted title:',
-            title,
-            'body:',
-            body,
-            'isRootTab:',
-            this.isRootTab,
-            'isDocSheet:',
-            this.isDocSheet
-        );
 
         if (this.isRootTab) {
             this.dispatchEvent(
@@ -460,7 +441,6 @@ export class SpreadsheetDocumentView extends LitElement {
                 })
             );
         } else {
-            console.log('Dispatching document-change event');
             this.dispatchEvent(
                 new CustomEvent('document-change', {
                     bubbles: true,
@@ -477,8 +457,6 @@ export class SpreadsheetDocumentView extends LitElement {
     }
 
     render() {
-        console.log('Running render() for SpreadsheetDocumentView', this.title, this._activeTab);
-        console.log('easymdeStyles type:', typeof easymdeStyles);
         return html`
             <style>
                 ${documentViewStyles}
@@ -780,6 +758,7 @@ export class SpreadsheetDocumentView extends LitElement {
     disconnectedCallback(): void {
         super.disconnectedCallback();
         window.removeEventListener('editor-action', this._boundEditorAction);
+        this._debouncedNotifyDirty.flush(); // flush pending dirty notification before destroy
         this._debouncedNotifyDirty.cancel();
         if (this._easymde) {
             this._easymde.toTextArea();
