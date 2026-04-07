@@ -264,7 +264,23 @@ export class SpreadsheetDocumentView extends LitElement {
                         },
                         {
                             name: 'image',
-                            action: EasyMDE.drawImage,
+                            action: () => {
+                                const input = document.createElement('input');
+                                input.type = 'file';
+                                input.accept = 'image/png, image/jpeg, image/gif, image/webp';
+                                input.addEventListener('change', () => {
+                                    const file = input.files?.[0];
+                                    if (file) {
+                                        const mde = this._easymde as any;
+                                        mde?.options?.imageUploadFunction?.(
+                                            file,
+                                            () => { /* onSuccess handled inside imageUploadFunction */ },
+                                            (err: string) => console.error('Image upload failed:', err)
+                                        );
+                                    }
+                                });
+                                input.click();
+                            },
                             className: 'easymde-icon',
                             title: t('toolbarImage'),
                             icon: '<span class="codicon codicon-file-media"></span>'
