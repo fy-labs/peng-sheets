@@ -1,11 +1,11 @@
 /**
- * Reproduction tests for: EasyMDE editing does not mark VS Code document dirty.
+ * Tests for dirty state notification timing.
  *
- * Root cause: CodeMirror 'change' handler only updates _editContent in-memory.
- * No event is dispatched to the extension host during Write mode editing.
- * Fix: Call _debouncedNotifyDirty() in the 'change' handler so that a
- * 'document-change' (or 'root-content-change'/'doc-sheet-change') event with
- * save: false is dispatched after DIRTY_NOTIFY_DEBOUNCE_MS (500ms) of inactivity.
+ * Dirty content is NOT sent during editing (no debounce).
+ * It is sent only when:
+ * 1. Switching from Write mode to View mode
+ * 2. Component is destroyed (e.g. bottom tab switch via keyed() directive)
+ * 3. Ctrl+S triggers a 'flush-edit-content' window event before save
  */
 
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
@@ -91,225 +91,204 @@ async function switchToWriteTab(element: SpreadsheetDocumentView): Promise<any> 
     return EasyMDE.mock.instances[EasyMDE.mock.instances.length - 1];
 }
 
-// ─── Test 1: dirty notification event dispatched after debounce ───────────────
+// ─── Test 1: no event during editing ────────────────────────────────────────
 
-describe('Dirty state: document-change with save:false dispatched after EasyMDE change', () => {
+describe('Dirty state: no event dispatched during editing', () => {
     afterEach(() => {
         vi.clearAllMocks();
     });
 
-    it('should dispatch document-change with save:false after 500ms of inactivity', async () => {
+    it('should NOT dispatch document-change while typing in write mode', async () => {
         const { element, container } = await createElement({ content: 'Hello world' });
         const instance = await switchToWriteTab(element);
 
         const events: CustomEvent[] = [];
         element.addEventListener('document-change', (e) => events.push(e as CustomEvent));
 
-        vi.useFakeTimers({ shouldAdvanceTime: true });
-        try {
-            // Simulate user typing
-            instance._currentValue = 'Hello world edited';
-            instance._changeCallback?.();
+        // Simulate user typing
+        instance._currentValue = 'Hello world edited';
+        instance._changeCallback?.();
 
-            // Before debounce resolves, no event should be dispatched
-            expect(events).toHaveLength(0);
+        // Wait well past old debounce period
+        await new Promise((r) => setTimeout(r, 600));
 
-            // Advance timers past DIRTY_NOTIFY_DEBOUNCE_MS (500ms)
-            vi.advanceTimersByTime(500);
+        // No event should be dispatched during editing
+        expect(events).toHaveLength(0);
 
-            expect(events).toHaveLength(1);
-            expect(events[0].detail.save).toBe(false);
-            expect(events[0].detail.content).toBe('Hello world edited');
-        } finally {
-            vi.useRealTimers();
-            container.remove();
-        }
+        container.remove();
     });
 
-    it('should dispatch only once for multiple rapid changes (debounce)', async () => {
+    it('should NOT dispatch event for multiple rapid changes during editing', async () => {
         const { element, container } = await createElement({ content: 'Hello' });
         const instance = await switchToWriteTab(element);
 
         const events: CustomEvent[] = [];
         element.addEventListener('document-change', (e) => events.push(e as CustomEvent));
 
-        vi.useFakeTimers({ shouldAdvanceTime: true });
-        try {
-            // Simulate rapid keystrokes
-            instance._currentValue = 'H';
-            instance._changeCallback?.();
-            vi.advanceTimersByTime(100);
+        // Simulate rapid keystrokes
+        instance._currentValue = 'H';
+        instance._changeCallback?.();
+        instance._currentValue = 'He';
+        instance._changeCallback?.();
+        instance._currentValue = 'Hel';
+        instance._changeCallback?.();
 
-            instance._currentValue = 'He';
-            instance._changeCallback?.();
-            vi.advanceTimersByTime(100);
+        await new Promise((r) => setTimeout(r, 600));
+        expect(events).toHaveLength(0);
 
-            instance._currentValue = 'Hel';
-            instance._changeCallback?.();
-            vi.advanceTimersByTime(100);
-
-            // 300ms elapsed but debounce timer reset each time — no dispatch yet
-            expect(events).toHaveLength(0);
-
-            // Wait past the full debounce period after the last call
-            vi.advanceTimersByTime(400);
-
-            expect(events).toHaveLength(1);
-            expect(events[0].detail.save).toBe(false);
-        } finally {
-            vi.useRealTimers();
-            container.remove();
-        }
+        container.remove();
     });
 });
 
-// ─── Test 2: save:true vs save:false distinction ──────────────────────────────
+// ─── Test 2: event dispatched on view tab switch ────────────────────────────
 
-describe('Dirty state: change event dispatches save:false', () => {
+describe('Dirty state: event dispatched when switching to view tab', () => {
     afterEach(() => {
         vi.clearAllMocks();
     });
 
-    it('change-only dispatch (dirty notification) uses save:false', async () => {
+    it('switching to view tab should dispatch dirty notification', async () => {
+        const { element, container } = await createElement({ content: 'Initial' });
+        const instance = await switchToWriteTab(element);
+
+        const events: CustomEvent[] = [];
+        element.addEventListener('document-change', (e) => events.push(e as CustomEvent));
+
+        // Simulate edit
+        instance._currentValue = 'Initial modified';
+        instance._changeCallback?.();
+
+        // No event yet
+        expect(events).toHaveLength(0);
+
+        // Switch to view tab
+        const tabs = element.querySelectorAll('.sdv-tab');
+        (tabs[0] as HTMLButtonElement).click();
+
+        // Event dispatched synchronously on view switch
+        expect(events).toHaveLength(1);
+        expect(events[0].detail.save).toBe(false);
+
+        container.remove();
+    });
+});
+
+// ─── Test 3: event dispatched on disconnectedCallback (bottom tab switch) ───
+
+describe('Dirty state: event dispatched on component destroy', () => {
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('removing element should dispatch dirty notification for pending edits', async () => {
+        const { element, container } = await createElement({ content: 'Initial' });
+        const instance = await switchToWriteTab(element);
+
+        const events: CustomEvent[] = [];
+        // Listen on window because disconnectedCallback dispatches on window
+        // (element is already disconnected from DOM at that point)
+        const handler = (e: Event) => events.push(e as CustomEvent);
+        window.addEventListener('document-change', handler);
+
+        // Simulate edit
+        instance._currentValue = 'Edited in write mode';
+        instance._changeCallback?.();
+
+        expect(events).toHaveLength(0);
+
+        // Remove element (simulates bottom tab switch with keyed() directive)
+        element.remove();
+
+        expect(events).toHaveLength(1);
+        expect(events[0].detail.save).toBe(false);
+
+        window.removeEventListener('document-change', handler);
+        container.remove();
+    });
+});
+
+// ─── Test 4: flush-edit-content event (Ctrl+S) ─────────────────────────────
+
+describe('Dirty state: flush-edit-content event triggers dirty notification', () => {
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('should dispatch dirty notification on flush-edit-content window event', async () => {
         const { element, container } = await createElement({ content: 'Test' });
         const instance = await switchToWriteTab(element);
 
         const events: CustomEvent[] = [];
         element.addEventListener('document-change', (e) => events.push(e as CustomEvent));
 
-        vi.useFakeTimers({ shouldAdvanceTime: true });
-        try {
-            instance._currentValue = 'Test edited';
-            instance._changeCallback?.();
+        // Simulate edit
+        instance._currentValue = 'Test edited for save';
+        instance._changeCallback?.();
 
-            vi.advanceTimersByTime(500);
+        expect(events).toHaveLength(0);
 
-            expect(events).toHaveLength(1);
-            expect(events[0].detail.save).toBe(false);
-        } finally {
-            vi.useRealTimers();
-            container.remove();
-        }
-    });
-});
+        // Dispatch flush-edit-content (what Ctrl+S handler does before save)
+        window.dispatchEvent(new Event('flush-edit-content'));
 
-// ─── Test 3: dirty debounce flushed on tab switch ────────────────────────────
+        expect(events).toHaveLength(1);
+        expect(events[0].detail.save).toBe(false);
+        expect(events[0].detail.content).toBe('Test edited for save');
 
-describe('Dirty state: _debouncedNotifyDirty flushed on _switchToViewTab', () => {
-    afterEach(() => {
-        vi.clearAllMocks();
+        container.remove();
     });
 
-    it('switching to view tab should flush pending dirty notification immediately', async () => {
-        const { element, container } = await createElement({ content: 'Initial' });
-        const instance = await switchToWriteTab(element);
+    it('should NOT dispatch if not in write mode', async () => {
+        const { element, container } = await createElement({ content: 'Test' });
 
         const events: CustomEvent[] = [];
         element.addEventListener('document-change', (e) => events.push(e as CustomEvent));
 
-        vi.useFakeTimers({ shouldAdvanceTime: true });
-        try {
-            // Simulate edit
-            instance._currentValue = 'Initial modified';
-            instance._changeCallback?.();
+        // In view mode, flush-edit-content should be a no-op
+        window.dispatchEvent(new Event('flush-edit-content'));
 
-            // Only 100ms elapsed: dirty debounce (500ms) has NOT fired yet
-            vi.advanceTimersByTime(100);
-            expect(events).toHaveLength(0);
+        expect(events).toHaveLength(0);
 
-            // Switch to view tab — flush() should fire the pending dirty notification immediately
-            const tabs = element.querySelectorAll('.sdv-tab');
-            (tabs[0] as HTMLButtonElement).click();
-
-            // The event should be dispatched synchronously by flush()
-            expect(events).toHaveLength(1);
-            expect(events[0].detail.save).toBe(false);
-
-            // No additional events after the debounce period
-            vi.advanceTimersByTime(500);
-            expect(events).toHaveLength(1);
-        } finally {
-            vi.useRealTimers();
-            container.remove();
-        }
-    });
-
-    it('switching to view tab after save should NOT dispatch any event (no pending dirty)', async () => {
-        const { element, container } = await createElement({ content: 'Initial' });
-        const instance = await switchToWriteTab(element);
-
-        const events: CustomEvent[] = [];
-        element.addEventListener('document-change', (e) => events.push(e as CustomEvent));
-
-        vi.useFakeTimers({ shouldAdvanceTime: true });
-        try {
-            // Simulate edit
-            instance._currentValue = 'Content edited';
-            instance._changeCallback?.();
-
-            // Let the dirty debounce fire naturally (500ms)
-            vi.advanceTimersByTime(500);
-            expect(events).toHaveLength(1); // dirty notification sent
-
-            // Clear events for next assertion
-            events.length = 0;
-
-            // Switch to view tab — no pending dirty, so flush() is a no-op
-            const tabs = element.querySelectorAll('.sdv-tab');
-            (tabs[0] as HTMLButtonElement).click();
-
-            // No event dispatched
-            expect(events).toHaveLength(0);
-
-            // No delayed event either
-            vi.advanceTimersByTime(500);
-            expect(events).toHaveLength(0);
-        } finally {
-            vi.useRealTimers();
-            container.remove();
-        }
+        container.remove();
     });
 });
 
-// ─── Test 4: root-content-change dispatched for isRootTab ─────────────────────
+// ─── Test 5: root-content-change dispatched for isRootTab ─────────────────
 
 describe('Dirty state: root-content-change dispatched for isRootTab=true', () => {
     afterEach(() => {
         vi.clearAllMocks();
     });
 
-    it('should dispatch root-content-change with save:false for isRootTab documents', async () => {
+    it('should dispatch root-content-change on view switch for isRootTab documents', async () => {
         const { element, container } = await createElement({ content: 'Root content', isRootTab: true });
         const instance = await switchToWriteTab(element);
 
         const events: CustomEvent[] = [];
         element.addEventListener('root-content-change', (e) => events.push(e as CustomEvent));
 
-        vi.useFakeTimers({ shouldAdvanceTime: true });
-        try {
-            instance._currentValue = 'Root content edited';
-            instance._changeCallback?.();
+        instance._currentValue = 'Root content edited';
+        instance._changeCallback?.();
 
-            vi.advanceTimersByTime(500);
+        // Switch to view tab to trigger notification
+        const tabs = element.querySelectorAll('.sdv-tab');
+        (tabs[0] as HTMLButtonElement).click();
 
-            expect(events).toHaveLength(1);
-            expect(events[0].detail.save).toBe(false);
-            expect(events[0].detail.content).toBe('Root content edited');
-        } finally {
-            vi.useRealTimers();
-            container.remove();
-        }
+        expect(events).toHaveLength(1);
+        expect(events[0].detail.save).toBe(false);
+        expect(events[0].detail.content).toBe('Root content edited');
+
+        container.remove();
     });
 });
 
-// ─── Test 5: doc-sheet-change dispatched for isDocSheet ───────────────────────
+// ─── Test 6: doc-sheet-change dispatched for isDocSheet ───────────────────
 
 describe('Dirty state: doc-sheet-change dispatched for isDocSheet=true', () => {
     afterEach(() => {
         vi.clearAllMocks();
     });
 
-    it('should dispatch doc-sheet-change with save:false for isDocSheet documents', async () => {
+    it('should dispatch doc-sheet-change on view switch for isDocSheet documents', async () => {
         const { element, container } = await createElement({
             content: 'Sheet content',
             isDocSheet: true,
@@ -320,19 +299,17 @@ describe('Dirty state: doc-sheet-change dispatched for isDocSheet=true', () => {
         const events: CustomEvent[] = [];
         element.addEventListener('doc-sheet-change', (e) => events.push(e as CustomEvent));
 
-        vi.useFakeTimers({ shouldAdvanceTime: true });
-        try {
-            instance._currentValue = 'Sheet content edited';
-            instance._changeCallback?.();
+        instance._currentValue = 'Sheet content edited';
+        instance._changeCallback?.();
 
-            vi.advanceTimersByTime(500);
+        // Switch to view tab to trigger notification
+        const tabs = element.querySelectorAll('.sdv-tab');
+        (tabs[0] as HTMLButtonElement).click();
 
-            expect(events).toHaveLength(1);
-            expect(events[0].detail.save).toBe(false);
-            expect(events[0].detail.sheetIndex).toBe(2);
-        } finally {
-            vi.useRealTimers();
-            container.remove();
-        }
+        expect(events).toHaveLength(1);
+        expect(events[0].detail.save).toBe(false);
+        expect(events[0].detail.sheetIndex).toBe(2);
+
+        container.remove();
     });
 });

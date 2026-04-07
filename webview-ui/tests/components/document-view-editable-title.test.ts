@@ -267,38 +267,34 @@ describe('SpreadsheetDocumentView - Editable Title: document-change event', () =
     });
 
     it('should include the edited title in document-change event detail', async () => {
-        vi.useFakeTimers({ shouldAdvanceTime: true });
-        try {
-            const EasyMDEModule = await import('easymde');
-            const EasyMDE = (EasyMDEModule as any).default;
-            const instance = EasyMDE.mock.instances[EasyMDE.mock.instances.length - 1];
+        const EasyMDEModule = await import('easymde');
+        const EasyMDE = (EasyMDEModule as any).default;
+        const instance = EasyMDE.mock.instances[EasyMDE.mock.instances.length - 1];
 
-            // Edit the title
-            const input = element.querySelector('input.sdv-title-input') as HTMLInputElement;
-            expect(input).not.toBeNull();
-            input.value = 'Edited Title';
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            await element.updateComplete;
+        // Edit the title
+        const input = element.querySelector('input.sdv-title-input') as HTMLInputElement;
+        expect(input).not.toBeNull();
+        input.value = 'Edited Title';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        await element.updateComplete;
 
-            // Also fire a content change so the debounced save will fire
-            instance.value.mockReturnValue('Some body content');
-            instance._changeCallback?.();
+        // Also fire a content change so _editDirty is set
+        instance.value.mockReturnValue('Some body content');
+        instance._changeCallback?.();
 
-            // Capture the event
-            const eventSpy = vi.fn();
-            element.addEventListener('document-change', eventSpy);
+        // Capture the event
+        const eventSpy = vi.fn();
+        element.addEventListener('document-change', eventSpy);
 
-            // Flush the debounce to dispatch the event immediately
-            vi.runAllTimers();
+        // Switch to view tab to trigger dirty notification
+        const tabs = element.querySelectorAll('.sdv-tab');
+        (tabs[0] as HTMLButtonElement).click();
 
-            expect(eventSpy).toHaveBeenCalledTimes(1);
-            // detail.title must reflect the edited title text (without prefix)
-            expect(eventSpy.mock.calls[0][0].detail.title).toBe('Edited Title');
+        expect(eventSpy).toHaveBeenCalledTimes(1);
+        // detail.title must reflect the edited title text (without prefix)
+        expect(eventSpy.mock.calls[0][0].detail.title).toBe('Edited Title');
 
-            element.removeEventListener('document-change', eventSpy);
-        } finally {
-            vi.useRealTimers();
-        }
+        element.removeEventListener('document-change', eventSpy);
     });
 });
 
