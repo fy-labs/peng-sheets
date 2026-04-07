@@ -269,6 +269,13 @@ export class SpreadsheetDocumentView extends LitElement {
                             title: t('toolbarImage'),
                             icon: '<span class="codicon codicon-file-media"></span>'
                         },
+                        {
+                            name: 'table',
+                            action: EasyMDE.drawTable,
+                            className: 'easymde-icon',
+                            title: t('toolbarTable'),
+                            icon: '<span class="codicon codicon-table"></span>'
+                        },
                         '|',
                         {
                             name: 'side-by-side',
