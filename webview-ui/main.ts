@@ -765,6 +765,19 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
             // End batch: this sends a SINGLE updateRange with the final content
             this.spreadsheetService.endBatch();
 
+            // Update local tab data so it stays in sync when echo-back skips _parseWorkbook()
+            const activeTab = this.tabs.find(
+                (t) => t.type === 'sheet' && t.sheetIndex === detail.sheetIndex
+            );
+            if (activeTab && isSheetJSON(activeTab.data)) {
+                if (detail.title) {
+                    activeTab.title = detail.title;
+                    (activeTab.data as SheetJSON).name = detail.title;
+                }
+                (activeTab.data as SheetJSON).content = detail.content;
+            }
+            this.requestUpdate();
+
             if (detail.save) {
                 this._handleSave();
             }
@@ -1049,7 +1062,12 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                 .tabs="${this.tabs}"
                 .activeIndex="${this.activeTabIndex}"
                 .editingIndex="${this.editingTabIndex}"
-                @tab-select="${(e: CustomEvent) => (this.activeTabIndex = e.detail.index)}"
+                @tab-select="${(e: CustomEvent) => {
+                    // Flush dirty edit content BEFORE changing activeTabIndex so that
+                    // _handleDocumentChange sees the correct (old) active tab.
+                    window.dispatchEvent(new Event('flush-edit-content'));
+                    this.activeTabIndex = e.detail.index;
+                }}"
                 @tab-edit-start="${(e: CustomEvent) =>
                     this._handleTabDoubleClick(e.detail.index, this.tabs[e.detail.index])}"
                 @tab-rename="${(e: CustomEvent) =>

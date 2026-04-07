@@ -265,6 +265,9 @@ export class GlobalEventController implements ReactiveController {
 
         if (isModifier && key === 's') {
             e.preventDefault();
+            // Flush pending edit content before saving so the extension host
+            // receives the latest dirty state before the save message.
+            window.dispatchEvent(new Event('flush-edit-content'));
             this.host._handleSave();
         }
 
