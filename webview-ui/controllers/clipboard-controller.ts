@@ -496,7 +496,8 @@ export class ClipboardController implements ReactiveController {
                     const imageType = item.types.find((t) => t.startsWith('image/'));
                     if (imageType) {
                         const blob = await item.getType(imageType);
-                        const file = new File([blob], `image-${Date.now()}.png`, { type: imageType });
+                        const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                        const file = new File([blob], `image-${ts}.png`, { type: imageType });
                         this._pasteImage(file);
                         return;
                     }

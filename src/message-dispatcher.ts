@@ -274,14 +274,15 @@ export class MessageDispatcher {
                 await vscode.workspace.fs.createDirectory(imagesDir);
             }
 
-            // Generate unique filename
+            // Sanitize filename (preserve hyphens, letters, digits)
             const ext = message.fileName.split('.').pop() || 'png';
             const basename = message.fileName
                 .replace(`.${ext}`, '')
-                .replace(/[^a-z0-9]/gi, '_')
+                .replace(/[^a-z0-9-]/gi, '-')
+                .replace(/-+/g, '-')
+                .replace(/^-|-$/g, '')
                 .toLowerCase();
-            const timestamp = Date.now();
-            const uniqueFilename = `${basename}-${timestamp}.${ext}`;
+            const uniqueFilename = `${basename}.${ext}`;
             const fileUri = vscode.Uri.joinPath(imagesDir, uniqueFilename);
 
             // Decode base64 and write file
