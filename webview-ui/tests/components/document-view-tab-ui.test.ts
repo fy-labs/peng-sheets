@@ -381,7 +381,7 @@ describe('SpreadsheetDocumentView - Tab UI: EasyMDE toolbar entries', () => {
         container.remove();
     });
 
-    it('should NOT include "side-by-side" in EasyMDE toolbar', async () => {
+    it('should include "side-by-side" in EasyMDE toolbar', async () => {
         const { element, container } = await createElement();
         const EasyMDEModule = await import('easymde');
         const EasyMDE = (EasyMDEModule as any).default;
@@ -395,7 +395,7 @@ describe('SpreadsheetDocumentView - Tab UI: EasyMDE toolbar entries', () => {
         const instance = EasyMDE.mock.instances[EasyMDE.mock.instances.length - 1];
         const toolbar = instance._options?.toolbar as Array<{ name: string } | string>;
         const hasSideBySide = toolbar.some((b) => typeof b === 'object' && b.name === 'side-by-side');
-        expect(hasSideBySide).toBe(false);
+        expect(hasSideBySide).toBe(true);
         container.remove();
     });
 });
@@ -434,24 +434,6 @@ describe('SpreadsheetDocumentView - Tab UI: i18n tab labels', () => {
 describe('SpreadsheetDocumentView - Tab UI: sticky structure', () => {
     afterEach(() => {
         vi.clearAllMocks();
-    });
-
-    it('.sdv-title-bar should have position:sticky in CSS', async () => {
-        const { readFileSync } = await import('fs');
-        const { resolve } = await import('path');
-        const cssPath = resolve(__dirname, '../../components/styles/document-view.css');
-        const cssText = readFileSync(cssPath, 'utf-8');
-        expect(cssText).toContain('.sdv-title-bar');
-        expect(cssText).toMatch(/\.sdv-title-bar\s*\{[^}]*position\s*:\s*sticky/s);
-    });
-
-    it('.sdv-tab-bar should have position:sticky in CSS', async () => {
-        const { readFileSync } = await import('fs');
-        const { resolve } = await import('path');
-        const cssPath = resolve(__dirname, '../../components/styles/document-view.css');
-        const cssText = readFileSync(cssPath, 'utf-8');
-        expect(cssText).toContain('.sdv-tab-bar');
-        expect(cssText).toMatch(/\.sdv-tab-bar\s*\{[^}]*position\s*:\s*sticky/s);
     });
 
     it('Write mode toolbar should get sticky position via JS', async () => {

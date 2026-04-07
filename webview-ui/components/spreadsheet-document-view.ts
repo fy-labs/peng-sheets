@@ -10,10 +10,6 @@ import codiconsStyles from '@vscode/codicons/dist/codicon.css?inline';
 import hljsStyles from 'highlight.js/styles/vs2015.min.css?inline';
 import EasyMDE from 'easymde';
 import { t } from '../utils/i18n';
-import { debounce } from '../utils/debounce';
-
-const DIRTY_NOTIFY_DEBOUNCE_MS = 500;
-
 // Configure marked once at module level (NOT inside render methods).
 // marked.use() is cumulative — calling it repeatedly adds duplicate extensions
 // and degrades performance exponentially.
@@ -91,7 +87,8 @@ export class SpreadsheetDocumentView extends LitElement {
     /** Edited title text (without header prefix). null means not yet edited. */
     private _editTitle: string | null = null;
 
-    private _debouncedNotifyDirty = debounce(() => this._doSaveContent(false), DIRTY_NOTIFY_DEBOUNCE_MS);
+    /** True when content or title has been modified since last notification. */
+    private _editDirty: boolean = false;
 
     private _easymde: EasyMDE | null = null;
     private _resizeObserver: ResizeObserver | null = null;
@@ -101,9 +98,20 @@ export class SpreadsheetDocumentView extends LitElement {
         this.triggerEditorAction(action);
     };
 
+    private _boundFlushEditContent = () => {
+        if (this._activeTab === 'write' && this._editDirty) {
+            if (this._easymde) {
+                this._editContent = this._easymde.value();
+            }
+            this._doSaveContent(false);
+            this._editDirty = false;
+        }
+    };
+
     connectedCallback(): void {
         super.connectedCallback();
         window.addEventListener('editor-action', this._boundEditorAction);
+        window.addEventListener('flush-edit-content', this._boundFlushEditContent);
     }
 
     protected willUpdate(changedProperties: PropertyValues): void {
@@ -114,6 +122,11 @@ export class SpreadsheetDocumentView extends LitElement {
             changedProperties.has('headerText')
         ) {
             this._editTitle = null;
+        }
+        // When content prop changes externally (e.g. undo) while in View mode,
+        // reset _editContent so _getRenderedContent() uses the updated prop.
+        if (changedProperties.has('content') && this._activeTab === 'view') {
+            this._editContent = null;
         }
     }
 
@@ -177,6 +190,11 @@ export class SpreadsheetDocumentView extends LitElement {
             // Show the editor host (lives outside Lit template, so no parts-marker risk)
             this._editorHost.style.display = '';
 
+            // Sync EasyMDE value if content was reset externally (e.g. undo)
+            if (this._easymde && this._easymde.value() !== this._editContent) {
+                this._easymde.value(this._editContent ?? '');
+            }
+
             if (!this._easymde) {
                 // Create textarea manually inside _editorHost on first activation
                 const textarea = document.createElement('textarea');
@@ -190,6 +208,7 @@ export class SpreadsheetDocumentView extends LitElement {
                     spellChecker: false,
                     autofocus: true,
                     status: false,
+                    sideBySideFullscreen: false,
                     minHeight: '400px',
                     toolbar: [
                         {
@@ -249,6 +268,14 @@ export class SpreadsheetDocumentView extends LitElement {
                             className: 'easymde-icon',
                             title: t('toolbarImage'),
                             icon: '<span class="codicon codicon-file-media"></span>'
+                        },
+                        '|',
+                        {
+                            name: 'side-by-side',
+                            action: EasyMDE.toggleSideBySide,
+                            className: 'easymde-icon',
+                            title: t('toolbarSideBySide'),
+                            icon: '<span class="codicon codicon-split-horizontal"></span>'
                         }
                     ],
                     uploadImage: true,
@@ -308,7 +335,7 @@ export class SpreadsheetDocumentView extends LitElement {
 
                 this._easymde.codemirror.on('change', () => {
                     this._editContent = this._easymde!.value();
-                    this._debouncedNotifyDirty();
+                    this._editDirty = true;
                 });
 
                 // Handle Escape key inside CodeMirror
@@ -349,8 +376,11 @@ export class SpreadsheetDocumentView extends LitElement {
             this._editorHost.style.display = 'none';
         }
 
-        // Flush before resetting _editTitle so _extractTitleAndBody still sees the edit
-        this._debouncedNotifyDirty.flush();
+        // Notify dirty content before resetting _editTitle so _extractTitleAndBody still sees the edit
+        if (this._editDirty) {
+            this._doSaveContent(false);
+            this._editDirty = false;
+        }
 
         this._editTitle = null;
         this._activeTab = 'view';
@@ -400,24 +430,27 @@ export class SpreadsheetDocumentView extends LitElement {
     private _onTitleInput(e: Event): void {
         const input = e.target as HTMLInputElement;
         this._editTitle = input.value;
-        this._debouncedNotifyDirty();
+        this._editDirty = true;
     }
 
     private _onTitleChange(e: Event): void {
         const input = e.target as HTMLInputElement;
         this._editTitle = input.value;
-        this._debouncedNotifyDirty.flush();
     }
 
-    private _doSaveContent(shouldSave: boolean = false): void {
-        // _doSaveContent is called from _debouncedNotifyDirty (either after the debounce
-        // timeout fires naturally, or via flush() on tab switch). In both cases _editContent
-        // is a string.
+    /**
+     * Dispatch a change event to notify the extension host of edited content.
+     * @param shouldSave - true to also trigger a VS Code file save
+     * @param target - EventTarget to dispatch on. Defaults to `this` (the element).
+     *   Use `window` when the element is disconnected from the DOM (e.g. in disconnectedCallback)
+     *   so that the event still reaches GlobalEventController's window-level listeners.
+     */
+    private _doSaveContent(shouldSave: boolean = false, target: EventTarget = this): void {
         const editContent = this._editContent ?? '';
         const { title, body } = this._extractTitleAndBody(editContent);
 
         if (this.isRootTab) {
-            this.dispatchEvent(
+            target.dispatchEvent(
                 new CustomEvent('root-content-change', {
                     bubbles: true,
                     composed: true,
@@ -428,7 +461,7 @@ export class SpreadsheetDocumentView extends LitElement {
                 })
             );
         } else if (this.isDocSheet) {
-            this.dispatchEvent(
+            target.dispatchEvent(
                 new CustomEvent('doc-sheet-change', {
                     bubbles: true,
                     composed: true,
@@ -441,7 +474,7 @@ export class SpreadsheetDocumentView extends LitElement {
                 })
             );
         } else {
-            this.dispatchEvent(
+            target.dispatchEvent(
                 new CustomEvent('document-change', {
                     bubbles: true,
                     composed: true,
@@ -758,8 +791,16 @@ export class SpreadsheetDocumentView extends LitElement {
     disconnectedCallback(): void {
         super.disconnectedCallback();
         window.removeEventListener('editor-action', this._boundEditorAction);
-        this._debouncedNotifyDirty.flush(); // flush pending dirty notification before destroy
-        this._debouncedNotifyDirty.cancel();
+        window.removeEventListener('flush-edit-content', this._boundFlushEditContent);
+        // Send dirty content before destroy (e.g. bottom tab switch via keyed() directive).
+        // Must dispatch on window because the element is already disconnected from the DOM.
+        if (this._editDirty) {
+            if (this._easymde) {
+                this._editContent = this._easymde.value();
+            }
+            this._doSaveContent(false, window);
+            this._editDirty = false;
+        }
         if (this._easymde) {
             this._easymde.toTextArea();
             this._easymde = null;

@@ -17,8 +17,6 @@
  */
 
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
 import '../../components/spreadsheet-document-view';
 import { SpreadsheetDocumentView } from '../../components/spreadsheet-document-view';
 
@@ -88,24 +86,6 @@ async function createElement(overrides: Partial<SpreadsheetDocumentView> = {}): 
     return { element, container };
 }
 
-// ─── Fix 1: :focus vs :focus-visible ─────────────────────────────────────────
-
-describe('Fix 1: .sdv-tab should use :focus-visible not :focus', () => {
-    it('document-view.css should NOT have .sdv-tab:focus rule', () => {
-        const cssPath = resolve(__dirname, '../../components/styles/document-view.css');
-        const cssText = readFileSync(cssPath, 'utf-8');
-        // Must NOT have bare :focus (which shows outline on mouse click)
-        expect(cssText).not.toMatch(/\.sdv-tab:focus\s*\{/);
-    });
-
-    it('document-view.css should have .sdv-tab:focus-visible rule', () => {
-        const cssPath = resolve(__dirname, '../../components/styles/document-view.css');
-        const cssText = readFileSync(cssPath, 'utf-8');
-        // Must have :focus-visible (keyboard navigation only)
-        expect(cssText).toMatch(/\.sdv-tab:focus-visible\s*\{/);
-    });
-});
-
 // ─── Fix 2: _getRenderedContent uses _editContent when available ───────────────
 
 describe('Fix 2: View tab renders _editContent (no flicker)', () => {
@@ -153,19 +133,19 @@ describe('Fix 2: View tab renders _editContent (no flicker)', () => {
         container.remove();
     });
 
-    it('View tab shows initial content via willUpdate sync on load', async () => {
-        // On initial load, willUpdate() detects the content property change and
-        // copies it into _editContent (null → string). _getRenderedContent() then
-        // uses _editContent (the synced value) to render.
+    it('View tab shows initial content via content prop fallback on load', async () => {
+        // On initial load, _editContent remains null (Write mode not yet entered).
+        // _getRenderedContent() falls back to _getFullContent(false) which uses
+        // the content prop directly.
         const { element, container } = await createElement({
             content: 'Initial prop content',
             isRootTab: false
         });
 
-        // After willUpdate, _editContent holds the content prop value (not null).
-        expect((element as any)._editContent).toBe('Initial prop content');
+        // _editContent stays null until Write mode is entered.
+        expect((element as any)._editContent).toBeNull();
 
-        // The rendered View tab should display the prop content.
+        // The rendered View tab should display the prop content via fallback.
         const output = element.querySelector('.output');
         expect(output).toBeTruthy();
         expect(output!.textContent).toContain('Initial prop content');

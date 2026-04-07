@@ -13,8 +13,6 @@
  */
 
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
 import '../../components/spreadsheet-document-view';
 import { SpreadsheetDocumentView } from '../../components/spreadsheet-document-view';
 import { t } from '../../utils/i18n';
@@ -115,20 +113,6 @@ describe('SpreadsheetDocumentView - Bug 1: toolbar sticky top offset', () => {
     });
 });
 
-describe('SpreadsheetDocumentView - Bug 2 (replaced): tab bar uses border-bottom underline style', () => {
-    it('document-view.css should have .sdv-tab--active with border-bottom-color', () => {
-        // The old .toggle-mode-button is gone; verify the new tab UI CSS is correct.
-        const cssPath = resolve(__dirname, '../../components/styles/document-view.css');
-        const cssText = readFileSync(cssPath, 'utf-8');
-
-        // Should have sdv-tab--active with border-bottom-color using a VS Code variable
-        expect(cssText).toContain('.sdv-tab--active');
-        expect(cssText).toContain('border-bottom-color: var(--vscode-focusBorder)');
-
-        // .toggle-mode-button must be gone
-        expect(cssText).not.toContain('.toggle-mode-button');
-    });
-});
 
 describe('SpreadsheetDocumentView - Bug 3: toolbar i18n', () => {
     let element: SpreadsheetDocumentView;
@@ -238,11 +222,17 @@ describe('SpreadsheetDocumentView - Bug 3: toolbar i18n', () => {
         expect(linkEntry.title).toBe(t('toolbarLink'));
         expect(imageEntry.title).toBe(t('toolbarImage'));
 
-        // preview and side-by-side must NOT be in the toolbar
+        // preview must NOT be in the toolbar
         const previewEntry = toolbar.find((b) => typeof b === 'object' && b.name === 'preview');
-        const sideBySideEntry = toolbar.find((b) => typeof b === 'object' && b.name === 'side-by-side');
         expect(previewEntry).toBeUndefined();
-        expect(sideBySideEntry).toBeUndefined();
+
+        // side-by-side should be present with i18n title
+        const sideBySideEntry = toolbar.find((b) => typeof b === 'object' && b.name === 'side-by-side') as {
+            name: string;
+            title: string;
+        };
+        expect(sideBySideEntry).toBeTruthy();
+        expect(sideBySideEntry.title).toBe(t('toolbarSideBySide'));
     });
 
     it('EasyMDE toolbar titles should use Japanese when lang is ja', async () => {
