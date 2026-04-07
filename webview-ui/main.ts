@@ -850,6 +850,12 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
             console.error('Error loading initial content:', e);
         }
         // Event listeners are now managed by GlobalEventController
+
+        // Listen for toolbar-action on window so that non-template components
+        // (e.g. clipboard controller) can trigger saveImage.
+        window.addEventListener('toolbar-action', (e: Event) => {
+            this._handleToolbarAction(e as CustomEvent);
+        });
     }
 
     async firstUpdated() {

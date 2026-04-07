@@ -10,6 +10,8 @@ import codiconsStyles from '@vscode/codicons/dist/codicon.css?inline';
 import hljsStyles from 'highlight.js/styles/vs2015.min.css?inline';
 import EasyMDE from 'easymde';
 import { t } from '../utils/i18n';
+import { uploadImageAndGetUrl } from '../utils/spreadsheet-helpers';
+
 // Configure marked once at module level (NOT inside render methods).
 // marked.use() is cumulative — calling it repeatedly adds duplicate extensions
 // and degrades performance exponentially.
@@ -39,17 +41,6 @@ export function parseHeaderPrefix(headerText: string): { prefix: string; text: s
     return { prefix: '', text: headerText };
 }
 
-/**
- * Generate meaningful alt text from a filename.
- * Format: "{sanitized basename} - {YYYY-MM-DD HH:mm}"
- */
-export function generateImageAltText(fileName: string): string {
-    const baseName = fileName.replace(/\.[^.]+$/, '');
-    const sanitized = baseName.replace(/-\d{10,}$/, '');
-    const now = new Date();
-    const dateStr = now.toISOString().slice(0, 16).replace('T', ' ');
-    return `${sanitized} - ${dateStr}`;
-}
 
 @customElement('spreadsheet-document-view')
 export class SpreadsheetDocumentView extends LitElement {
@@ -305,51 +296,28 @@ export class SpreadsheetDocumentView extends LitElement {
                     imageAccept: 'image/png, image/jpeg, image/gif, image/webp',
                     imageUploadFunction: async (
                         file: File,
-                        onSuccess: (url: string) => void,
+                        _onSuccess: (url: string) => void,
                         onError: (error: string) => void
                     ) => {
                         try {
-                            // We intentionally skip onSuccess: EasyMDE's default handler inserts
-                            // ![](url) with empty alt text, but we need a descriptive alt via
-                            // generateImageAltText(). cm.replaceSelection() gives us full control.
-                            // Status bar is disabled (status: false), so no loading indicator remains.
-                            const buffer = await file.arrayBuffer();
-                            const base64 = btoa(
-                                new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+                            await uploadImageAndGetUrl(
+                                file,
+                                (detail) => {
+                                    this.dispatchEvent(
+                                        new CustomEvent('toolbar-action', {
+                                            bubbles: true,
+                                            composed: true,
+                                            detail
+                                        })
+                                    );
+                                },
+                                (url, altText) => {
+                                    const cm = this._easymde!.codemirror;
+                                    cm.replaceSelection(`![${altText}](${url})`);
+                                    cm.focus();
+                                },
+                                onError
                             );
-
-                            // Send message to extension host to save the image
-                            const messageId = Math.random().toString(36).substring(7);
-                            this.dispatchEvent(
-                                new CustomEvent('toolbar-action', {
-                                    bubbles: true,
-                                    composed: true,
-                                    detail: {
-                                        action: 'saveImage',
-                                        messageId,
-                                        fileName: file.name,
-                                        fileData: base64
-                                    }
-                                })
-                            );
-
-                            // Wait for response via a global window event listener
-                            const handleImageResponse = (e: Event) => {
-                                const customEvent = e as CustomEvent;
-                                if (customEvent.detail.messageId === messageId) {
-                                    window.removeEventListener('imageSaved', handleImageResponse);
-                                    if (customEvent.detail.success) {
-                                        const url = customEvent.detail.url;
-                                        const altText = generateImageAltText(file.name);
-                                        const cm = this._easymde!.codemirror;
-                                        cm.replaceSelection(`![${altText}](${url})`);
-                                        cm.focus();
-                                    } else {
-                                        onError(customEvent.detail.error || 'Failed to upload image');
-                                    }
-                                }
-                            };
-                            window.addEventListener('imageSaved', handleImageResponse);
                         } catch (e) {
                             onError('Failed to process image');
                         }

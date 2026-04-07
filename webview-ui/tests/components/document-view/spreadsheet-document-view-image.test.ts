@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
-import { generateImageAltText } from '../../../components/spreadsheet-document-view.js';
+import { generateImageAltText } from '../../../utils/spreadsheet-helpers.js';
 
 // Mock ResizeObserver for jsdom
 beforeAll(() => {
