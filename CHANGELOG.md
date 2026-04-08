@@ -7,6 +7,7 @@ All notable changes to the "PengSheets" extension will be documented in this fil
 ### Added
 
 - Native image support in Document tabs with paste and drag-and-drop capabilities.
+- Image paste support in table cells via Ctrl+V. Images are auto-sized to fit column width.
 - Integrated EasyMDE for enhanced Markdown editing in Document tabs.
 
 ## [1.3.0] - 2026-03-11
