@@ -18,7 +18,9 @@ suite('MessageDispatcher Test Suite', () => {
                 save: sandbox.stub().resolves(true),
                 getText: sandbox.stub().returns(''),
                 positionAt: (offset: number) => new vscode.Position(0, offset),
-                lineAt: (_line: number) => ({ range: new vscode.Range(0, 0, 0, 0) }) as vscode.TextLine,
+                lineCount: 10,
+                lineAt: (_line: number) =>
+                    ({ range: new vscode.Range(0, 0, 0, 0), text: '' }) as vscode.TextLine,
                 validateRange: (range: vscode.Range) => range
             } as unknown as vscode.TextDocument,
             webviewPanel: undefined,

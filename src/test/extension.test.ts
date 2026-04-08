@@ -48,7 +48,8 @@ suite('Extension Test Suite', () => {
             } as vscode.ExtensionContext;
 
             const mockDocument = {
-                getText: () => 'Initial Content'
+                getText: () => 'Initial Content',
+                uri: vscode.Uri.file('/test/path/document.md')
             } as vscode.TextDocument;
 
             const html = getWebviewContent(mockWebview, mockContext, mockDocument);
@@ -70,7 +71,8 @@ suite('Extension Test Suite', () => {
             } as vscode.ExtensionContext;
 
             const mockDocument = {
-                getText: () => 'Initial Content'
+                getText: () => 'Initial Content',
+                uri: vscode.Uri.file('/test/path/document.md')
             } as vscode.TextDocument;
 
             const html = getWebviewContent(mockWebview, mockContext, mockDocument);
