@@ -2,7 +2,7 @@
     "name": "peng-sheets",
     "publisher": "f-y",
     "displayName": "PengSheets - Markdown Spreadsheet Editor",
-    "description": "Transform Markdown tables into a powerful spreadsheet editor with Excel-like editing, multi-sheet workbooks, and real-time synchronization.",
+    "description": "Excel-like Markdown table editor — multi-sheet workbooks, cross-table lookups, and live sync.",
     "icon": "images/icon.png",
     "version": "1.4.0",
     "engines": {
