@@ -24,6 +24,10 @@
 </p>
 
 <p align="center">
+  | <a href="https://github.com/f-y/peng-sheets/blob/main/README.md">English</a> | 日本語 |
+</p>
+
+<p align="center">
   <a href="#-特徴">特徴</a> •
   <a href="#-クイックスタート">クイックスタート</a> •
   <a href="#-なぜpengsheets">PengSheetsの利点</a> •
