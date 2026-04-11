@@ -43,8 +43,23 @@ node_modules/md-spreadsheet-parser/dist/*.wasm
 # Exclude test/build caches
 .pytest_cache/**
 
+# Exclude development docs
+docs/**
+
 # Exclude source files from node_modules
 node_modules/md-spreadsheet-parser/src/**
+
+# Exclude Vite-bundled dependencies (already in out/webview/main.js)
+node_modules/easymde/**
+node_modules/codemirror/**
+node_modules/codemirror-spell-checker/**
+node_modules/typo-js/**
+node_modules/highlight.js/**
+node_modules/marked/**
+node_modules/marked-highlight/**
+node_modules/js-yaml/**
+node_modules/argparse/**
+node_modules/onetime/**
 
 # Exclude devDependencies (only md-spreadsheet-parser and @bytecodealliance are needed at runtime)
 node_modules/@nodelib/**
