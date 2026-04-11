@@ -2,6 +2,7 @@ import { html, LitElement, PropertyValues, unsafeCSS } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { provideVSCodeDesignSystem } from '@vscode/webview-ui-toolkit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { keyed } from 'lit/directives/keyed.js';
 import { t } from './utils/i18n';
 import mainStyles from './styles/main.css?inline';
 
@@ -659,9 +660,15 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
             }
             this.spreadsheetService.endBatch();
 
+            // Frontmatter title rename must be outside the batch above
+            if (isFrontmatterTab && detail.title && detail.title !== activeTab.title) {
+                this.spreadsheetService.renameFrontmatterTitle(detail.title);
+            }
+
             // Update local state including title
             activeTab.title = newTitle;
             if (isDocumentJSON(activeTab.data)) {
+                activeTab.data.title = newTitle;
                 activeTab.data.content = detail.content;
             } else {
                 // Initialize if missing or wrong type
@@ -758,6 +765,19 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
             // End batch: this sends a SINGLE updateRange with the final content
             this.spreadsheetService.endBatch();
 
+            // Update local tab data so it stays in sync when echo-back skips _parseWorkbook()
+            const activeTab = this.tabs.find(
+                (t) => t.type === 'sheet' && t.sheetIndex === detail.sheetIndex
+            );
+            if (activeTab && isSheetJSON(activeTab.data)) {
+                if (detail.title) {
+                    activeTab.title = detail.title;
+                    (activeTab.data as SheetJSON).name = detail.title;
+                }
+                (activeTab.data as SheetJSON).content = detail.content;
+            }
+            this.requestUpdate();
+
             if (detail.save) {
                 this._handleSave();
             }
@@ -830,6 +850,12 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
             console.error('Error loading initial content:', e);
         }
         // Event listeners are now managed by GlobalEventController
+
+        // Listen for toolbar-action on window so that non-template components
+        // (e.g. clipboard controller) can trigger saveImage.
+        window.addEventListener('toolbar-action', (e: Event) => {
+            this._handleToolbarAction(e as CustomEvent);
+        });
     }
 
     async firstUpdated() {
@@ -965,16 +991,21 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                 ${activeTab.type === 'sheet' && isSheetJSON(activeTab.data)
                     ? isDocSheetType(activeTab.data as SheetJSON)
                         ? html`
-                              <spreadsheet-document-view
-                                  .title="${activeTab.title}"
-                                  .content="${getSheetContent(activeTab.data as SheetJSON)}"
-                                  .headerText="${'#'.repeat(
-                                      (this.config as Record<string, number>)?.sheetHeaderLevel ?? 2
-                                  )} ${activeTab.title}"
-                                  .isDocSheet="${true}"
-                                  .sheetIndex="${activeTab.sheetIndex}"
-                                  @toolbar-action="${this._handleToolbarAction}"
-                              ></spreadsheet-document-view>
+                              ${keyed(
+                                  `docsheet-${activeTab.sheetIndex}`,
+                                  html`
+                                      <spreadsheet-document-view
+                                          .title="${activeTab.title}"
+                                          .content="${getSheetContent(activeTab.data as SheetJSON)}"
+                                          .headerText="${'#'.repeat(
+                                              (this.config as Record<string, number>)?.sheetHeaderLevel ?? 2
+                                          )} ${activeTab.title}"
+                                          .isDocSheet="${true}"
+                                          .sheetIndex="${activeTab.sheetIndex}"
+                                          @toolbar-action="${this._handleToolbarAction}"
+                                      ></spreadsheet-document-view>
+                                  `
+                              )}
                           `
                         : html`
                               <div class="sheet-container" style="height: 100%">
@@ -992,25 +1023,36 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                           `
                     : activeTab.type === 'document' && isDocumentJSON(activeTab.data)
                       ? html`
-                            <spreadsheet-document-view
-                                .title="${activeTab.title}"
-                                .content="${(activeTab.data as DocumentJSON).content}"
-                                .headerText="${activeTab.pinned ? activeTab.title : `# ${activeTab.title}`}"
-                                @toolbar-action="${this._handleToolbarAction}"
-                            ></spreadsheet-document-view>
+                            ${keyed(
+                                `doc-${this.activeTabIndex}`,
+                                html`
+                                    <spreadsheet-document-view
+                                        .title="${activeTab.title}"
+                                        .content="${(activeTab.data as DocumentJSON).content}"
+                                        .headerText="${activeTab.pinned ? activeTab.title : `# ${activeTab.title}`}"
+                                        @toolbar-action="${this._handleToolbarAction}"
+                                    ></spreadsheet-document-view>
+                                `
+                            )}
                         `
                       : activeTab.type === 'root'
                         ? html`
-                              <spreadsheet-document-view
-                                  .title="${activeTab.title}"
-                                  .content="${(activeTab.data as { type: 'root'; content: string })?.content ?? ''}"
-                                  .headerText="${this.markdownInput?.trimStart().startsWith('---')
-                                      ? (this.workbook?.name ?? activeTab.title)
-                                      : `# ${this.workbook?.name ?? activeTab.title}`}"
-                                  .isRootTab="${true}"
-                                  @toolbar-action="${this._handleToolbarAction}"
-                                  @root-content-change="${this._handleRootContentChange}"
-                              ></spreadsheet-document-view>
+                              ${keyed(
+                                  `root`,
+                                  html`
+                                      <spreadsheet-document-view
+                                          .title="${activeTab.title}"
+                                          .content="${(activeTab.data as { type: 'root'; content: string })?.content ??
+                                          ''}"
+                                          .headerText="${this.markdownInput?.trimStart().startsWith('---')
+                                              ? (this.workbook?.name ?? activeTab.title)
+                                              : `# ${this.workbook?.name ?? activeTab.title}`}"
+                                          .isRootTab="${true}"
+                                          @toolbar-action="${this._handleToolbarAction}"
+                                          @root-content-change="${this._handleRootContentChange}"
+                                      ></spreadsheet-document-view>
+                                  `
+                              )}
                           `
                         : html``}
                 ${activeTab.type === 'onboarding'
@@ -1026,7 +1068,12 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
                 .tabs="${this.tabs}"
                 .activeIndex="${this.activeTabIndex}"
                 .editingIndex="${this.editingTabIndex}"
-                @tab-select="${(e: CustomEvent) => (this.activeTabIndex = e.detail.index)}"
+                @tab-select="${(e: CustomEvent) => {
+                    // Flush dirty edit content BEFORE changing activeTabIndex so that
+                    // _handleDocumentChange sees the correct (old) active tab.
+                    window.dispatchEvent(new Event('flush-edit-content'));
+                    this.activeTabIndex = e.detail.index;
+                }}"
                 @tab-edit-start="${(e: CustomEvent) =>
                     this._handleTabDoubleClick(e.detail.index, this.tabs[e.detail.index])}"
                 @tab-rename="${(e: CustomEvent) =>
@@ -1783,6 +1830,15 @@ export class MdSpreadsheetEditor extends LitElement implements GlobalEventHost {
         // Handle undo/redo/save at main.ts level (not delegated to table)
         if (action === 'save') {
             this._handleSave();
+            return;
+        }
+        if (action === 'saveImage') {
+            vscode.postMessage({
+                type: 'saveImage',
+                messageId: e.detail.messageId,
+                fileName: e.detail.fileName,
+                fileData: e.detail.fileData
+            });
             return;
         }
         if (action === 'undo') {

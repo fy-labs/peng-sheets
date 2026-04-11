@@ -265,6 +265,9 @@ export class GlobalEventController implements ReactiveController {
 
         if (isModifier && key === 's') {
             e.preventDefault();
+            // Flush pending edit content before saving so the extension host
+            // receives the latest dirty state before the save message.
+            window.dispatchEvent(new Event('flush-edit-content'));
             this.host._handleSave();
         }
 
@@ -506,6 +509,13 @@ export class GlobalEventController implements ReactiveController {
                 console.warn('Sync failed, resetting queue state.');
                 this.host.spreadsheetService.notifyUpdateReceived();
                 break;
+            case 'imageSaved':
+                window.dispatchEvent(
+                    new CustomEvent('imageSaved', {
+                        detail: message
+                    })
+                );
+                break;
             case 'insertValue':
                 // Insert value at current selection (used for date/time shortcuts from extension)
                 window.dispatchEvent(
@@ -517,6 +527,14 @@ export class GlobalEventController implements ReactiveController {
             case 'insertCopiedCells':
                 // Trigger insert copied cells action (used for Ctrl+Shift+= shortcut from extension)
                 window.dispatchEvent(new CustomEvent('insert-copied-cells-at-selection'));
+                break;
+            case 'editorAction':
+                // Route editor formatting actions to the active document view (used for bold/italic/heading/link shortcuts)
+                window.dispatchEvent(
+                    new CustomEvent('editor-action', {
+                        detail: { action: message.action }
+                    })
+                );
                 break;
         }
     }

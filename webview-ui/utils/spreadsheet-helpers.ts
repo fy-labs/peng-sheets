@@ -121,3 +121,56 @@ export function renderMarkdown(content: string): string {
 
     return html;
 }
+
+/**
+ * Generate alt text for an image file.
+ * Strips timestamp suffixes and appends current date/time.
+ */
+export function generateImageAltText(fileName: string): string {
+    const baseName = fileName.replace(/\.[^.]+$/, '');
+    const sanitized = baseName.replace(/-\d{10,}$/, '');
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 16).replace('T', ' ');
+    return `${sanitized} - ${dateStr}`;
+}
+
+/**
+ * Upload an image file via the extension host and invoke a callback with the saved URL.
+ *
+ * Flow: file → base64 → 'toolbar-action' saveImage event → wait for 'imageSaved' response.
+ * The caller provides `dispatchSaveEvent` to control how the saveImage event is dispatched
+ * (e.g. via element.dispatchEvent or window.dispatchEvent) and `onSaved` to handle the result.
+ */
+export async function uploadImageAndGetUrl(
+    file: File,
+    dispatchSaveEvent: (detail: { action: string; messageId: string; fileName: string; fileData: string }) => void,
+    onSaved: (url: string, altText: string) => void,
+    onError?: (error: string) => void
+): Promise<void> {
+    const buffer = await file.arrayBuffer();
+    const base64 = btoa(
+        new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+    );
+
+    const messageId = Math.random().toString(36).substring(7);
+    dispatchSaveEvent({
+        action: 'saveImage',
+        messageId,
+        fileName: file.name,
+        fileData: base64
+    });
+
+    const handleImageResponse = (e: Event) => {
+        const customEvent = e as CustomEvent;
+        if (customEvent.detail.messageId === messageId) {
+            window.removeEventListener('imageSaved', handleImageResponse);
+            if (customEvent.detail.success) {
+                const altText = generateImageAltText(file.name);
+                onSaved(customEvent.detail.url, altText);
+            } else {
+                onError?.(customEvent.detail.error || 'Failed to upload image');
+            }
+        }
+    };
+    window.addEventListener('imageSaved', handleImageResponse);
+}

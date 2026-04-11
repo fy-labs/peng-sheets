@@ -1,5 +1,6 @@
 # Markdown Spreadsheet Overview
 
+
 このドキュメントは、**VS Code Extension** と **Python Parser** の機能をデモンストレーションするためのハイブリッド・ノートブックです。
 ドキュメントとしての記述（コンテキスト）と、スプレッドシートとしてのデータ（テーブル）を同一ファイルで管理できることの強力さを示します。
 このファイル自体が `md-spreadsheet-parser` でパース可能な構造を持っています。

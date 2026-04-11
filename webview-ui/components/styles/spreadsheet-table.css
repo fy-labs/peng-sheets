@@ -67,6 +67,11 @@
     color: var(--vscode-textLink-foreground);
 }
 
+.cell img {
+    max-width: 100%;
+    height: auto;
+}
+
 .cell.word-wrap {
     white-space: pre-wrap;
     word-break: break-word;

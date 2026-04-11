@@ -50,6 +50,9 @@ export class MessageDispatcher {
             case 'redo':
                 await this.handleRedo();
                 break;
+            case 'saveImage':
+                await this.handleSaveImage(message as import('./types/messages').SaveImageMessage);
+                break;
         }
     }
 
@@ -59,8 +62,7 @@ export class MessageDispatcher {
             !!message &&
             typeof message === 'object' &&
             typeof msg.type === 'string' &&
-            typeof msg.type === 'string' &&
-            ['updateRange', 'batchUpdate', 'save', 'undo', 'redo'].includes(msg.type)
+            ['updateRange', 'batchUpdate', 'save', 'undo', 'redo', 'saveImage'].includes(msg.type)
         );
     }
 
@@ -253,5 +255,58 @@ export class MessageDispatcher {
 
     private async handleRedo() {
         await vscode.commands.executeCommand('redo');
+    }
+
+    private async handleSaveImage(message: import('./types/messages').SaveImageMessage) {
+        if (!this.context.activeDocument || !this.context.webviewPanel) {
+            return;
+        }
+
+        try {
+            const documentUri = this.context.activeDocument.uri;
+            const docDir = vscode.Uri.joinPath(documentUri, '..');
+            const imagesDir = vscode.Uri.joinPath(docDir, 'images');
+
+            // Ensure images directory exists
+            try {
+                await vscode.workspace.fs.stat(imagesDir);
+            } catch {
+                await vscode.workspace.fs.createDirectory(imagesDir);
+            }
+
+            // Sanitize filename (preserve hyphens, letters, digits)
+            const ext = message.fileName.split('.').pop() || 'png';
+            const basename = message.fileName
+                .replace(`.${ext}`, '')
+                .replace(/[^a-z0-9-]/gi, '-')
+                .replace(/-+/g, '-')
+                .replace(/^-|-$/g, '')
+                .toLowerCase();
+            const uniqueFilename = `${basename}.${ext}`;
+            const fileUri = vscode.Uri.joinPath(imagesDir, uniqueFilename);
+
+            // Decode base64 and write file
+            const fileData = Buffer.from(message.fileData, 'base64');
+            await vscode.workspace.fs.writeFile(fileUri, fileData);
+
+            // Construct relative URL for Markdown
+            const relativeUrl = `./images/${uniqueFilename}`;
+
+            // Send success response to webview
+            this.context.webviewPanel.webview.postMessage({
+                type: 'imageSaved',
+                messageId: message.messageId,
+                success: true,
+                url: relativeUrl
+            });
+        } catch (error) {
+            console.error('Failed to save image:', error);
+            this.context.webviewPanel.webview.postMessage({
+                type: 'imageSaved',
+                messageId: message.messageId,
+                success: false,
+                error: (error as Error).message || 'Failed to save image file'
+            });
+        }
     }
 }

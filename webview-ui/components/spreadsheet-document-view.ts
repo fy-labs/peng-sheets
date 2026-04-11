@@ -1,13 +1,52 @@
-import { html, LitElement, PropertyValues, unsafeCSS } from 'lit';
+import { html, LitElement, PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { marked } from 'marked';
+import { markedHighlight } from 'marked-highlight';
+import hljs from 'highlight.js';
 import documentViewStyles from './styles/document-view.css?inline';
+import easymdeStyles from 'easymde/dist/easymde.min.css?inline';
+import codiconsStyles from '@vscode/codicons/dist/codicon.css?inline';
+import hljsStyles from 'highlight.js/styles/vs2015.min.css?inline';
+import EasyMDE from 'easymde';
 import { t } from '../utils/i18n';
+import { uploadImageAndGetUrl } from '../utils/spreadsheet-helpers';
+
+// Configure marked once at module level (NOT inside render methods).
+// marked.use() is cumulative — calling it repeatedly adds duplicate extensions
+// and degrades performance exponentially.
+marked.use(
+    markedHighlight({
+        langPrefix: 'hljs language-',
+        highlight(code, lang) {
+            if (lang && hljs.getLanguage(lang)) {
+                return hljs.highlight(code, { language: lang }).value;
+            }
+            return hljs.highlightAuto(code).value;
+        }
+    }) as marked.MarkedExtension
+);
+marked.setOptions({ gfm: true, breaks: false });
+
+/**
+ * Parse header prefix from headerText.
+ * Returns { prefix, text } where prefix is the markdown heading markers + space
+ * (e.g. "## ") and text is the remaining title text.
+ */
+export function parseHeaderPrefix(headerText: string): { prefix: string; text: string } {
+    const match = headerText.match(/^(#{1,6}\s)/);
+    if (match) {
+        return { prefix: match[1], text: headerText.slice(match[1].length) };
+    }
+    return { prefix: '', text: headerText };
+}
+
 
 @customElement('spreadsheet-document-view')
 export class SpreadsheetDocumentView extends LitElement {
-    static styles = unsafeCSS(documentViewStyles);
+    protected createRenderRoot() {
+        return this;
+    }
 
     @property({ type: String })
     title: string = '';
@@ -32,17 +71,64 @@ export class SpreadsheetDocumentView extends LitElement {
     sheetIndex: number = 0;
 
     @state()
-    private _isEditing: boolean = false;
+    private _activeTab: 'view' | 'write' = 'view';
 
-    @state()
-    private _editContent: string = '';
+    private _editContent: string | null = null;
 
-    private _debounceTimer: number | null = null;
+    /** Edited title text (without header prefix). null means not yet edited. */
+    private _editTitle: string | null = null;
+
+    /** True when content or title has been modified since last notification. */
+    private _editDirty: boolean = false;
+
+    private _easymde: EasyMDE | null = null;
+    private _resizeObserver: ResizeObserver | null = null;
+    private _editorHost: HTMLDivElement | null = null;
+    private _boundEditorAction = (e: Event) => {
+        const action = (e as CustomEvent<{ action: string }>).detail.action;
+        this.triggerEditorAction(action);
+    };
+
+    private _boundFlushEditContent = () => {
+        if (this._activeTab === 'write' && this._editDirty) {
+            if (this._easymde) {
+                this._editContent = this._easymde.value();
+            }
+            this._doSaveContent(false);
+            this._editDirty = false;
+        }
+    };
+
+    connectedCallback(): void {
+        super.connectedCallback();
+        window.addEventListener('editor-action', this._boundEditorAction);
+        window.addEventListener('flush-edit-content', this._boundFlushEditContent);
+    }
 
     protected willUpdate(changedProperties: PropertyValues): void {
         super.willUpdate(changedProperties);
-        if (changedProperties.has('content') && !this._isEditing) {
-            this._editContent = this.content;
+        // Reset _editTitle when switching back to view mode or when headerText changes
+        if (
+            (changedProperties.has('_activeTab') && this._activeTab === 'view') ||
+            changedProperties.has('headerText')
+        ) {
+            this._editTitle = null;
+        }
+        // When content prop changes externally (e.g. undo) while in View mode,
+        // reset _editContent so _getRenderedContent() uses the updated prop.
+        if (changedProperties.has('content') && this._activeTab === 'view') {
+            this._editContent = null;
+        }
+    }
+
+    protected firstUpdated(): void {
+        const container = this.querySelector('.sdv-container') as HTMLElement;
+        if (container) {
+            this._editorHost = document.createElement('div');
+            this._editorHost.className = 'edit-container';
+            this._editorHost.setAttribute('role', 'tabpanel');
+            this._editorHost.style.display = 'none';
+            container.appendChild(this._editorHost);
         }
     }
 
@@ -60,13 +146,12 @@ export class SpreadsheetDocumentView extends LitElement {
     }
 
     private _getRenderedContent(): string {
-        const fullContent = this._getFullContent();
+        // Use _editContent (in-memory, always up-to-date) when Write mode has been
+        // entered at least once (_editContent !== null). null means we haven't entered
+        // Write mode yet, so fall back to the content prop. This correctly handles the
+        // case where the user deleted all text (empty string is valid edited content).
+        const fullContent = this._editContent !== null ? this._editContent : this._getFullContent(false);
         if (!fullContent.trim()) return `<p><em>${t('clickToEdit')}...</em></p>`;
-
-        marked.setOptions({
-            gfm: true,
-            breaks: false
-        });
 
         try {
             return marked.parse(fullContent) as string;
@@ -76,33 +161,222 @@ export class SpreadsheetDocumentView extends LitElement {
         }
     }
 
-    private _enterEditMode(): void {
-        // For root tab, edit content directly without header
-        // For documents, include h1 header in edit content
-        this._editContent = this.isRootTab ? this.content : this._getFullContent(false);
-        this._isEditing = true;
+    private async _switchToWriteTab(): Promise<void> {
+        if (this._activeTab === 'write') return;
 
-        // Focus the textarea after it renders
-        this.updateComplete.then(() => {
-            const textarea = this.shadowRoot?.querySelector('textarea');
-            if (textarea) {
-                textarea.focus();
-                textarea.setSelectionRange(0, 0);
-                textarea.scrollTop = 0;
+        // On first Write mode entry, _editContent is null — initialise from the prop.
+        // On subsequent entries, preserve whatever the user had already typed.
+        if (this._editContent === null) {
+            this._editContent = this.isRootTab ? this.content : this._getFullContent(false);
+        }
+        // Initialize _editTitle on first Write mode entry
+        if (this._editTitle === null) {
+            this._editTitle = parseHeaderPrefix(this.headerText || this.title).text;
+        }
+        this._activeTab = 'write';
+
+        await this.updateComplete;
+
+        if (this._editorHost) {
+            // Show the editor host (lives outside Lit template, so no parts-marker risk)
+            this._editorHost.style.display = '';
+
+            // Sync EasyMDE value if content was reset externally (e.g. undo)
+            if (this._easymde && this._easymde.value() !== this._editContent) {
+                this._easymde.value(this._editContent ?? '');
             }
-        });
+
+            if (!this._easymde) {
+                // Create textarea manually inside _editorHost on first activation
+                const textarea = document.createElement('textarea');
+                textarea.className = 'editor';
+                this._editorHost.appendChild(textarea);
+
+                this._easymde = new EasyMDE({
+                    element: textarea,
+                    initialValue: this._editContent ?? this._getFullContent(false),
+                    autoDownloadFontAwesome: false,
+                    spellChecker: false,
+                    autofocus: true,
+                    status: false,
+                    sideBySideFullscreen: false,
+                    minHeight: '400px',
+                    toolbar: [
+                        {
+                            name: 'bold',
+                            action: EasyMDE.toggleBold,
+                            className: 'easymde-icon',
+                            title: t('toolbarBold'),
+                            icon: '<span class="codicon codicon-bold"></span>'
+                        },
+                        {
+                            name: 'italic',
+                            action: EasyMDE.toggleItalic,
+                            className: 'easymde-icon',
+                            title: t('toolbarItalic'),
+                            icon: '<span class="codicon codicon-italic"></span>'
+                        },
+                        {
+                            name: 'heading',
+                            action: EasyMDE.toggleHeadingSmaller,
+                            className: 'easymde-icon',
+                            title: t('toolbarHeading'),
+                            icon: '<span class="codicon codicon-text-size"></span>'
+                        },
+                        '|',
+                        {
+                            name: 'quote',
+                            action: EasyMDE.toggleBlockquote,
+                            className: 'easymde-icon',
+                            title: t('toolbarQuote'),
+                            icon: '<span class="codicon codicon-quote"></span>'
+                        },
+                        {
+                            name: 'unordered-list',
+                            action: EasyMDE.toggleUnorderedList,
+                            className: 'easymde-icon',
+                            title: t('toolbarUnorderedList'),
+                            icon: '<span class="codicon codicon-list-unordered"></span>'
+                        },
+                        {
+                            name: 'ordered-list',
+                            action: EasyMDE.toggleOrderedList,
+                            className: 'easymde-icon',
+                            title: t('toolbarOrderedList'),
+                            icon: '<span class="codicon codicon-list-ordered"></span>'
+                        },
+                        '|',
+                        {
+                            name: 'link',
+                            action: EasyMDE.drawLink,
+                            className: 'easymde-icon',
+                            title: t('toolbarLink'),
+                            icon: '<span class="codicon codicon-link"></span>'
+                        },
+                        {
+                            name: 'image',
+                            action: () => {
+                                const input = document.createElement('input');
+                                input.type = 'file';
+                                input.accept = 'image/png, image/jpeg, image/gif, image/webp';
+                                input.addEventListener('change', () => {
+                                    const file = input.files?.[0];
+                                    if (file) {
+                                        const mde = this._easymde as any;
+                                        mde?.options?.imageUploadFunction?.(
+                                            file,
+                                            () => { /* onSuccess handled inside imageUploadFunction */ },
+                                            (err: string) => console.error('Image upload failed:', err)
+                                        );
+                                    }
+                                });
+                                input.click();
+                            },
+                            className: 'easymde-icon',
+                            title: t('toolbarImage'),
+                            icon: '<span class="codicon codicon-file-media"></span>'
+                        },
+                        {
+                            name: 'table',
+                            action: EasyMDE.drawTable,
+                            className: 'easymde-icon',
+                            title: t('toolbarTable'),
+                            icon: '<span class="codicon codicon-table"></span>'
+                        },
+                        '|',
+                        {
+                            name: 'side-by-side',
+                            action: EasyMDE.toggleSideBySide,
+                            className: 'easymde-icon',
+                            title: t('toolbarSideBySide'),
+                            icon: '<span class="codicon codicon-split-horizontal"></span>'
+                        }
+                    ],
+                    uploadImage: true,
+                    imageAccept: 'image/png, image/jpeg, image/gif, image/webp',
+                    imageUploadFunction: async (
+                        file: File,
+                        _onSuccess: (url: string) => void,
+                        onError: (error: string) => void
+                    ) => {
+                        try {
+                            await uploadImageAndGetUrl(
+                                file,
+                                (detail) => {
+                                    this.dispatchEvent(
+                                        new CustomEvent('toolbar-action', {
+                                            bubbles: true,
+                                            composed: true,
+                                            detail
+                                        })
+                                    );
+                                },
+                                (url, altText) => {
+                                    const cm = this._easymde!.codemirror;
+                                    cm.replaceSelection(`![${altText}](${url})`);
+                                    cm.focus();
+                                },
+                                onError
+                            );
+                        } catch (e) {
+                            onError('Failed to process image');
+                        }
+                    }
+                });
+
+                this._easymde.codemirror.on('change', () => {
+                    this._editContent = this._easymde!.value();
+                    this._editDirty = true;
+                });
+
+                // Handle Escape key inside CodeMirror
+                this._easymde.codemirror.setOption('extraKeys', {
+                    Esc: () => {
+                        this._switchToViewTab(false);
+                    }
+                });
+
+                // Make EasyMDE toolbar sticky below .sdv-title-bar + .sdv-tab-bar
+                this._updateStickyPositions();
+
+                // Watch for resize changes
+                if (typeof ResizeObserver !== 'undefined') {
+                    this._resizeObserver = new ResizeObserver(() => {
+                        this._updateStickyPositions();
+                    });
+                    const titleBar = this.querySelector('.sdv-title-bar') as HTMLElement;
+                    const tabBar = this.querySelector('.sdv-tab-bar') as HTMLElement;
+                    if (titleBar) this._resizeObserver.observe(titleBar);
+                    if (tabBar) this._resizeObserver.observe(tabBar);
+                }
+            }
+        }
     }
 
-    private _exitEditMode(shouldSave: boolean = false): void {
-        if (!this._isEditing) return;
-        this._isEditing = false;
+    private _switchToViewTab(shouldSave: boolean = false): void {
+        if (this._activeTab === 'view') return;
 
-        const currentFullContent = this._getFullContent(false);
+        if (this._easymde) {
+            this._editContent = this._easymde.value();
+            // Do NOT call toTextArea() -- EasyMDE stays alive in _editorHost.
+            // Only toggling display avoids any DOM mutations to Lit-managed nodes.
+        }
 
-        // Only save if content changed (compare full content including title)
-        if (this._editContent !== currentFullContent) {
-            this._saveContent(shouldSave);
-        } else if (shouldSave) {
+        // Hide the editor host (outside Lit template, so safe to manipulate directly)
+        if (this._editorHost) {
+            this._editorHost.style.display = 'none';
+        }
+
+        // Notify dirty content before resetting _editTitle so _extractTitleAndBody still sees the edit
+        if (this._editDirty) {
+            this._doSaveContent(false);
+            this._editDirty = false;
+        }
+
+        this._editTitle = null;
+        this._activeTab = 'view';
+
+        if (shouldSave) {
             this.dispatchEvent(
                 new CustomEvent('toolbar-action', {
                     bubbles: true,
@@ -113,117 +387,422 @@ export class SpreadsheetDocumentView extends LitElement {
         }
     }
 
-    private _handleInput(e: Event): void {
-        const target = e.target as HTMLTextAreaElement;
-        this._editContent = target.value;
-    }
+    private _updateStickyPositions(): void {
+        const titleBar = this.querySelector('.sdv-title-bar') as HTMLElement;
+        const tabBar = this.querySelector('.sdv-tab-bar') as HTMLElement;
+        const toolbar = this.querySelector('.editor-toolbar') as HTMLElement;
 
-    private _handleKeyDown(e: KeyboardEvent): void {
-        // Escape exits edit mode without saving
-        if (e.key === 'Escape') {
-            this._editContent = this._getFullContent(false);
-            this._isEditing = false;
+        const titleBarHeight = titleBar ? titleBar.getBoundingClientRect().height : 0;
+        const tabBarHeight = tabBar ? tabBar.getBoundingClientRect().height : 0;
+
+        if (tabBar) {
+            tabBar.style.top = `${titleBarHeight}px`;
+        }
+        if (toolbar) {
+            toolbar.style.position = 'sticky';
+            toolbar.style.top = `${titleBarHeight + tabBarHeight}px`;
+            toolbar.style.zIndex = '28';
+            toolbar.style.background = 'var(--vscode-editor-background)';
         }
     }
 
     private _extractTitleAndBody(content: string): { title: string; body: string } {
         // Edit mode no longer includes header in textarea,
-        // so content IS the body. Title is preserved from the component property.
-        return { title: this.title, body: content };
+        // so content IS the body. Use _editTitle if set (user edited the title),
+        // otherwise fall back to the component property.
+        const title = this._editTitle !== null ? this._editTitle : this.title;
+        return { title, body: content };
     }
 
-    private _saveContent(shouldSave: boolean = false): void {
-        if (this._debounceTimer) {
-            window.clearTimeout(this._debounceTimer);
+    private _getTitlePrefix(): string {
+        return parseHeaderPrefix(this.headerText || this.title).prefix;
+    }
+
+    private _onTitleInput(e: Event): void {
+        const input = e.target as HTMLInputElement;
+        this._editTitle = input.value;
+        this._editDirty = true;
+    }
+
+    private _onTitleChange(e: Event): void {
+        const input = e.target as HTMLInputElement;
+        this._editTitle = input.value;
+    }
+
+    /**
+     * Dispatch a change event to notify the extension host of edited content.
+     * @param shouldSave - true to also trigger a VS Code file save
+     * @param target - EventTarget to dispatch on. Defaults to `this` (the element).
+     *   Use `window` when the element is disconnected from the DOM (e.g. in disconnectedCallback)
+     *   so that the event still reaches GlobalEventController's window-level listeners.
+     */
+    private _doSaveContent(shouldSave: boolean = false, target: EventTarget = this): void {
+        const editContent = this._editContent ?? '';
+        const { title, body } = this._extractTitleAndBody(editContent);
+
+        if (this.isRootTab) {
+            target.dispatchEvent(
+                new CustomEvent('root-content-change', {
+                    bubbles: true,
+                    composed: true,
+                    detail: {
+                        content: editContent,
+                        save: shouldSave
+                    }
+                })
+            );
+        } else if (this.isDocSheet) {
+            target.dispatchEvent(
+                new CustomEvent('doc-sheet-change', {
+                    bubbles: true,
+                    composed: true,
+                    detail: {
+                        sheetIndex: this.sheetIndex,
+                        content: body,
+                        title: title,
+                        save: shouldSave
+                    }
+                })
+            );
+        } else {
+            target.dispatchEvent(
+                new CustomEvent('document-change', {
+                    bubbles: true,
+                    composed: true,
+                    detail: {
+                        sectionIndex: this.sectionIndex,
+                        content: body,
+                        title: title,
+                        save: shouldSave
+                    }
+                })
+            );
         }
-
-        this._debounceTimer = window.setTimeout(() => {
-            const { title, body } = this._extractTitleAndBody(this._editContent);
-
-            if (this.isRootTab) {
-                // For root tab, dispatch root-content-change event
-                this.dispatchEvent(
-                    new CustomEvent('root-content-change', {
-                        bubbles: true,
-                        composed: true,
-                        detail: {
-                            content: this._editContent, // Root tab uses raw edit content
-                            save: shouldSave
-                        }
-                    })
-                );
-            } else if (this.isDocSheet) {
-                // For doc sheets within workbook, dispatch doc-sheet-change event
-                this.dispatchEvent(
-                    new CustomEvent('doc-sheet-change', {
-                        bubbles: true,
-                        composed: true,
-                        detail: {
-                            sheetIndex: this.sheetIndex,
-                            content: body,
-                            title: title,
-                            save: shouldSave
-                        }
-                    })
-                );
-            } else {
-                // For standalone document sections
-                this.dispatchEvent(
-                    new CustomEvent('document-change', {
-                        bubbles: true,
-                        composed: true,
-                        detail: {
-                            sectionIndex: this.sectionIndex,
-                            content: body,
-                            title: title,
-                            save: shouldSave
-                        }
-                    })
-                );
-            }
-        }, 100);
     }
 
     render() {
         return html`
-            <div class="container">
-                ${this._isEditing
+            <style>
+                ${documentViewStyles}
+                ${easymdeStyles}
+                ${codiconsStyles}
+                ${hljsStyles}
+
+                /* Override to fix Light DOM global bleeding if necessary */
+                .spreadsheet-document-view-container {
+                    /* Container specificity */
+                }
+
+                .editor-toolbar {
+                    background-color: var(--vscode-editor-background) !important;
+                    border-color: var(--vscode-widget-border) !important;
+                    color: var(--vscode-editor-foreground) !important;
+                    position: sticky !important;
+                    z-index: 28;
+                }
+
+                .editor-toolbar button {
+                    color: var(--vscode-editor-foreground) !important;
+                }
+
+                .editor-toolbar button.active,
+                .editor-toolbar button:hover {
+                    background-color: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31)) !important;
+                    border-color: transparent !important;
+                }
+
+                /* Codicon spans inside toolbar buttons */
+                .editor-toolbar button .codicon {
+                    font-size: 16px;
+                    line-height: 30px;
+                }
+
+                /* Separator divider */
+                .editor-toolbar i.separator {
+                    border-left-color: var(--vscode-widget-border, rgba(128, 128, 128, 0.35)) !important;
+                    border-right: none !important;
+                }
+
+                .CodeMirror {
+                    background-color: var(--vscode-editor-background) !important;
+                    color: var(--vscode-editor-foreground) !important;
+                    border-color: var(--vscode-widget-border) !important;
+                    font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, sans-serif) !important;
+                    font-size: var(--vscode-font-size, 13px) !important;
+                    line-height: 1.6 !important;
+                    padding: 0 1.5rem !important;
+                }
+
+                .CodeMirror-cursor {
+                    border-left-color: var(--vscode-editorCursor-foreground) !important;
+                }
+
+                /* Selection highlight — match VS Code editor selection */
+                .CodeMirror-focused .CodeMirror-selected,
+                .CodeMirror .CodeMirror-selected {
+                    background: var(--vscode-editor-selectionBackground, rgba(38, 79, 120, 0.5)) !important;
+                }
+
+                /* Match heading sizes with preview view (.output h1/h2/h3) */
+                .cm-s-easymde .cm-header-1 {
+                    font-size: 2em !important;
+                }
+                .cm-s-easymde .cm-header-2 {
+                    font-size: 1.5em !important;
+                }
+                .cm-s-easymde .cm-header-3 {
+                    font-size: 1.25em !important;
+                }
+                .cm-s-easymde .cm-header-4 {
+                    font-size: 1.1em !important;
+                }
+                .cm-s-easymde .cm-header-5 {
+                    font-size: 1em !important;
+                }
+                .cm-s-easymde .cm-header-6 {
+                    font-size: 1em !important;
+                }
+
+                /*
+                 * Shared content styles for EasyMDE preview panes.
+                 * These mirror the .output rules in document-view.css
+                 * so that preview and rendered view look identical.
+                 */
+                .editor-preview,
+                .editor-preview-side {
+                    background-color: var(--vscode-editor-background) !important;
+                    font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, sans-serif) !important;
+                    font-size: var(--vscode-font-size, 13px) !important;
+                    line-height: 1.6 !important;
+                    padding: 0 1.5rem !important;
+                    color: var(--vscode-editor-foreground) !important;
+                }
+
+                /* Headings */
+                .editor-preview h1,
+                .editor-preview-side h1 {
+                    font-size: 2em !important;
+                    margin-bottom: 0.5em;
+                    border-bottom: 1px solid var(--vscode-widget-border);
+                    padding-bottom: 0.3em;
+                }
+                .editor-preview h2,
+                .editor-preview-side h2 {
+                    font-size: 1.5em !important;
+                    margin-top: 1.5em;
+                    margin-bottom: 0.5em;
+                }
+                .editor-preview h3,
+                .editor-preview-side h3 {
+                    font-size: 1.25em !important;
+                    margin-top: 1em;
+                    margin-bottom: 0.5em;
+                }
+
+                /* Paragraphs and lists */
+                .editor-preview p,
+                .editor-preview-side p {
+                    margin: 0.5em 0;
+                }
+                .editor-preview ul,
+                .editor-preview ol,
+                .editor-preview-side ul,
+                .editor-preview-side ol {
+                    margin: 0.5em 0;
+                    padding-left: 2em;
+                }
+                .editor-preview li,
+                .editor-preview-side li {
+                    margin: 0.25em 0;
+                }
+
+                /* Text formatting */
+                .editor-preview strong,
+                .editor-preview-side strong {
+                    font-weight: bold;
+                }
+                .editor-preview em,
+                .editor-preview-side em {
+                    font-style: italic;
+                }
+                .editor-preview a,
+                .editor-preview-side a {
+                    color: var(--vscode-textLink-foreground);
+                }
+                .editor-preview a:hover,
+                .editor-preview-side a:hover {
+                    text-decoration: underline;
+                }
+
+                /* Code */
+                .editor-preview code,
+                .editor-preview-side code {
+                    background: var(--vscode-textCodeBlock-background);
+                    padding: 0.1em 0.3em;
+                    border-radius: 3px;
+                    font-family: var(--vscode-editor-font-family, monospace);
+                    font-size: 0.9em;
+                }
+                .editor-preview pre,
+                .editor-preview-side pre {
+                    background: var(--vscode-textCodeBlock-background);
+                    padding: 1em;
+                    border-radius: 4px;
+                    overflow-x: auto;
+                    margin: 1em 0;
+                }
+                .editor-preview pre code,
+                .editor-preview-side pre code {
+                    background: none;
+                    padding: 0;
+                }
+
+                /* Blockquotes */
+                .editor-preview blockquote,
+                .editor-preview-side blockquote {
+                    border-left: 3px solid var(--vscode-textBlockQuote-border);
+                    padding-left: 1em;
+                    margin-left: 0;
+                    margin-right: 0;
+                    color: var(--vscode-textBlockQuote-foreground);
+                }
+
+                /* Horizontal rule */
+                .editor-preview hr,
+                .editor-preview-side hr {
+                    border: none;
+                    border-top: 1px solid var(--vscode-widget-border);
+                    margin: 1.5em 0;
+                }
+
+                /* Tables */
+                .editor-preview table,
+                .editor-preview-side table {
+                    border-collapse: collapse;
+                    margin: 1em 0;
+                }
+                .editor-preview th,
+                .editor-preview td,
+                .editor-preview-side th,
+                .editor-preview-side td {
+                    padding: 6px 13px;
+                    border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+                }
+                .editor-preview th,
+                .editor-preview-side th {
+                    font-weight: 600;
+                }
+
+                /* Images */
+                .editor-preview img,
+                .editor-preview-side img {
+                    max-width: 100%;
+                    height: auto;
+                }
+            </style>
+            <div class="sdv-container container spreadsheet-document-view-container">
+                <!-- Title bar (hidden for root tab) -->
+                ${!this.isRootTab
                     ? html`
-                          ${this.headerText ? html`<div class="header-field">${this.headerText}</div>` : html``}
-                          <div class="edit-container">
-                              <div class="edit-hint visible">${t('pressEscapeToCancel')}</div>
-                              <textarea
-                                  class="editor"
-                                  .value=${this._editContent}
-                                  @input=${this._handleInput}
-                                  @blur=${() => this._exitEditMode(false)}
-                                  @keydown=${this._handleKeyDown}
-                              ></textarea>
+                          <div class="sdv-title-bar">
+                              ${this._activeTab === 'write'
+                                  ? html`
+                                        ${this._getTitlePrefix()
+                                            ? html`<span class="sdv-title-prefix">${this._getTitlePrefix()}</span>`
+                                            : html``}
+                                        <input
+                                            class="sdv-title-input"
+                                            type="text"
+                                            .value="${this._editTitle ??
+                                            parseHeaderPrefix(this.headerText || this.title).text}"
+                                            @input="${this._onTitleInput}"
+                                            @change="${this._onTitleChange}"
+                                            aria-label="Edit document title"
+                                        />
+                                    `
+                                  : html`<div class="sdv-title-text">${this.headerText || this.title}</div>`}
                           </div>
-                          <button
-                              class="save-button"
-                              @mousedown=${(e: MouseEvent) => e.preventDefault()}
-                              @click=${() => this._exitEditMode(true)}
-                          >
-                              <span class="codicon codicon-check"></span>
-                              Save
-                          </button>
                       `
-                    : html`
-                          <div class="output" @click=${this._enterEditMode}>
-                              ${unsafeHTML(this._getRenderedContent())}
-                          </div>
+                    : html``}
+
+                <!-- Tab bar -->
+                <div class="sdv-tab-bar" role="tablist">
+                    <button
+                        class="sdv-tab ${this._activeTab === 'view' ? 'sdv-tab--active' : ''}"
+                        role="tab"
+                        aria-selected="${this._activeTab === 'view'}"
+                        aria-label="${t('tabViewAriaLabel')}"
+                        @click=${() => this._switchToViewTab(false)}
+                    >
+                        ${t('tabView')}
+                    </button>
+                    <button
+                        class="sdv-tab ${this._activeTab === 'write' ? 'sdv-tab--active' : ''}"
+                        role="tab"
+                        aria-selected="${this._activeTab === 'write'}"
+                        aria-label="${t('tabWriteAriaLabel')}"
+                        @click=${() => this._switchToWriteTab()}
+                    >
+                        ${t('tabWrite')}
+                    </button>
+                </div>
+
+                <!-- Tab content: only the view-mode output is Lit-managed.
+                     The write-mode editor host (_editorHost) is created outside
+                     Lit's template in firstUpdated() to avoid parts-marker corruption
+                     by EasyMDE's DOM operations. -->
+                ${this._activeTab === 'view'
+                    ? html`
+                          <div class="output" role="tabpanel">${unsafeHTML(this._getRenderedContent())}</div>
                           <div class="scroll-spacer"></div>
-                          <div class="edit-hint">${t('clickToEdit')}</div>
-                      `}
+                      `
+                    : html``}
             </div>
         `;
     }
 
+    triggerEditorAction(action: string): void {
+        if (!this._easymde || this._activeTab !== 'write') return;
+        switch (action) {
+            case 'bold':
+                EasyMDE.toggleBold(this._easymde);
+                break;
+            case 'italic':
+                EasyMDE.toggleItalic(this._easymde);
+                break;
+            case 'heading':
+                EasyMDE.toggleHeadingSmaller(this._easymde);
+                break;
+            case 'link':
+                EasyMDE.drawLink(this._easymde);
+                break;
+        }
+    }
+
     disconnectedCallback(): void {
         super.disconnectedCallback();
-        if (this._debounceTimer) {
-            window.clearTimeout(this._debounceTimer);
+        window.removeEventListener('editor-action', this._boundEditorAction);
+        window.removeEventListener('flush-edit-content', this._boundFlushEditContent);
+        // Send dirty content before destroy (e.g. bottom tab switch via keyed() directive).
+        // Must dispatch on window because the element is already disconnected from the DOM.
+        if (this._editDirty) {
+            if (this._easymde) {
+                this._editContent = this._easymde.value();
+            }
+            this._doSaveContent(false, window);
+            this._editDirty = false;
+        }
+        if (this._easymde) {
+            this._easymde.toTextArea();
+            this._easymde = null;
+        }
+        if (this._resizeObserver) {
+            this._resizeObserver.disconnect();
+            this._resizeObserver = null;
+        }
+        if (this._editorHost) {
+            this._editorHost.remove();
+            this._editorHost = null;
         }
     }
 }

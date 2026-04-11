@@ -230,6 +230,8 @@ export class SpreadsheetService {
                 undoStopBefore: true,
                 undoStopAfter: true
             });
+            // Mark syncing so the echo-back from onDidChangeTextDocument skips _parseWorkbook()
+            this._isSyncing = true;
             return;
         }
 
@@ -261,6 +263,8 @@ export class SpreadsheetService {
             undoStopBefore: true,
             undoStopAfter: true
         });
+        // Mark syncing so the echo-back from onDidChangeTextDocument skips _parseWorkbook()
+        this._isSyncing = true;
     }
 
     /**

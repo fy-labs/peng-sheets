@@ -1,6 +1,7 @@
 import { ReactiveController, ReactiveControllerHost } from 'lit';
 import { SelectionController } from './selection-controller';
 import { ClipboardStore } from '../stores/clipboard-store';
+import { uploadImageAndGetUrl } from '../utils/spreadsheet-helpers';
 
 interface TableData {
     headers: string[] | null;
@@ -360,11 +361,50 @@ export class ClipboardController implements ReactiveController {
     }
 
     handlePaste(e: ClipboardEvent) {
+        // Check for image files in clipboard (e.g. Ctrl+V screenshot)
+        const files = e.clipboardData?.files;
+        if (files && files.length > 0) {
+            const imageFile = Array.from(files).find((f) => f.type.startsWith('image/'));
+            if (imageFile) {
+                e.preventDefault();
+                this._pasteImage(imageFile);
+                return;
+            }
+        }
+
         const text = e.clipboardData?.getData('text/plain');
         if (text) {
             e.preventDefault();
             this._pasteTsvData(text);
         }
+    }
+
+    private async _pasteImage(file: File): Promise<void> {
+        const { selectionCtrl, sheetIndex, tableIndex } = this.host;
+        const row = selectionCtrl.selectedRow;
+        const col = selectionCtrl.selectedCol;
+        if (row < 0 || col < 0) return;
+
+        await uploadImageAndGetUrl(
+            file,
+            (detail) => {
+                window.dispatchEvent(new CustomEvent('toolbar-action', { detail }));
+            },
+            (url, altText) => {
+                window.dispatchEvent(
+                    new CustomEvent('paste-cells', {
+                        detail: {
+                            sheetIndex,
+                            tableIndex,
+                            startRow: row,
+                            startCol: col,
+                            data: [[`![${altText}](${url})`]],
+                            includeHeaders: false
+                        }
+                    })
+                );
+            }
+        );
     }
 
     private _getTsvForSelection(): string | null {
@@ -449,6 +489,21 @@ export class ClipboardController implements ReactiveController {
      */
     async paste(): Promise<void> {
         try {
+            // Check for image data in clipboard first
+            if (navigator.clipboard.read) {
+                const items = await navigator.clipboard.read();
+                for (const item of items) {
+                    const imageType = item.types.find((t) => t.startsWith('image/'));
+                    if (imageType) {
+                        const blob = await item.getType(imageType);
+                        const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                        const file = new File([blob], `image-${ts}.png`, { type: imageType });
+                        this._pasteImage(file);
+                        return;
+                    }
+                }
+            }
+
             const text = await navigator.clipboard.readText();
             if (text) {
                 this._pasteTsvData(text);
