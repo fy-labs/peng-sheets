@@ -4,6 +4,8 @@ All notable changes to the "PengSheets" extension will be documented in this fil
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-04-11
+
 ### Added
 
 - Native image support in Document tabs with paste and drag-and-drop capabilities.
