@@ -226,6 +226,13 @@ export class EventController implements ReactiveController {
     // ============================================================
 
     handleColClick = (e: CustomEvent<{ col: number; shiftKey: boolean }>) => {
+        if (
+            this.host.editCtrl.isEditing &&
+            this.host.selectionCtrl.selectedRow === -1 &&
+            this.host.selectionCtrl.selectedCol === e.detail.col
+        ) {
+            return;
+        }
         this.host.selectionCtrl.selectCell(-2, e.detail.col, e.detail.shiftKey);
         this.host.focusCell();
     };
@@ -233,6 +240,14 @@ export class EventController implements ReactiveController {
     handleColMousedown = (e: CustomEvent<{ col: number; shiftKey: boolean; originalEvent?: MouseEvent }>) => {
         const col = e.detail.col;
         const shiftKey = e.detail.shiftKey;
+
+        if (
+            this.host.editCtrl.isEditing &&
+            this.host.selectionCtrl.selectedRow === -1 &&
+            this.host.selectionCtrl.selectedCol === col
+        ) {
+            return;
+        }
 
         // Check if this column is already in selection (potential drag)
         const { selectedRow, selectedCol, selectionAnchorCol } = this.host.selectionCtrl;
@@ -372,6 +387,14 @@ export class EventController implements ReactiveController {
     };
 
     handleCellClick = async (e: CustomEvent<{ row: number; col: number; shiftKey: boolean }>) => {
+        if (
+            this.host.editCtrl.isEditing &&
+            this.host.selectionCtrl.selectedRow === e.detail.row &&
+            this.host.selectionCtrl.selectedCol === e.detail.col
+        ) {
+            return;
+        }
+
         // Commit current edit if active
         // Logic from _commitCurrentEdit (moved/adapted)
         if (this.host.editCtrl.isEditing) {
@@ -392,6 +415,16 @@ export class EventController implements ReactiveController {
             originalEvent?: MouseEvent;
         }>
     ) => {
+        const { row, col, shiftKey } = e.detail;
+
+        if (
+            this.host.editCtrl.isEditing &&
+            this.host.selectionCtrl.selectedRow === row &&
+            this.host.selectionCtrl.selectedCol === col
+        ) {
+            return;
+        }
+
         // Commit any pending edit before changing selection (click-away commit)
         if (this.host.editCtrl.isEditing) {
             // Editing cell is in View's shadow DOM
@@ -426,8 +459,6 @@ export class EventController implements ReactiveController {
                 this.host.editCtrl.cancelEditing();
             }
         }
-
-        const { row, col, shiftKey } = e.detail;
 
         // Check if this cell is already in selection (potential drag)
         const { selectedRow, selectedCol, selectionAnchorRow, selectionAnchorCol } = this.host.selectionCtrl;
