@@ -151,7 +151,7 @@ export class SpreadsheetDocumentView extends LitElement {
         // Write mode yet, so fall back to the content prop. This correctly handles the
         // case where the user deleted all text (empty string is valid edited content).
         const fullContent = this._editContent !== null ? this._editContent : this._getFullContent(false);
-        if (!fullContent.trim()) return `<p><em>${t('clickToEdit')}...</em></p>`;
+        if (!fullContent.trim()) return '';
 
         try {
             return marked.parse(fullContent) as string;

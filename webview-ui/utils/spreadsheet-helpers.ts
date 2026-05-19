@@ -66,6 +66,201 @@ export function getDOMText(node: Node, isRoot = false): string {
 }
 
 /**
+ * Walk `target`'s child nodes and compute the string-level offset at which
+ * `node` (a descendant of `target`) sits, using the same rules as `getDOMText`:
+ *   - Text nodes: every character counts, except U+200B (zero-width space) = 0 chars
+ *   - BR nodes: count as 1 character (\n)
+ *
+ * Returns the cumulative character count up to (but not including) `offsetInNode`
+ * characters into `node`.  Returns -1 when `node` is not found inside `target`.
+ */
+function _domOffsetToStringOffset(target: HTMLElement, node: Node, offsetInNode: number): number {
+    let count = 0;
+
+    function walk(current: Node): boolean {
+        if (current === node) {
+            // We reached the exact node. Add offsetInNode characters.
+            if (current.nodeType === Node.TEXT_NODE) {
+                // Each char counts except ZWS
+                const text = current.textContent || '';
+                let chars = 0;
+                for (let i = 0; i < offsetInNode; i++) {
+                    if (text[i] !== '\u200B') {
+                        chars++;
+                    }
+                }
+                count += chars;
+            }
+            // For element nodes used as boundary (e.g. offset = 0 inside BR parent), nothing to add.
+            return true; // found
+        }
+
+        if (current.nodeName === 'BR') {
+            count += 1; // BR = \n = 1 char
+            return false;
+        }
+
+        if (current.nodeType === Node.TEXT_NODE) {
+            const text = current.textContent || '';
+            for (const ch of text) {
+                if (ch !== '\u200B') count++;
+            }
+            return false;
+        }
+
+        // Element node: recurse into children
+        for (const child of current.childNodes) {
+            if (walk(child)) return true;
+        }
+        return false;
+    }
+
+    // Walk the target's children (skip target itself as root)
+    for (const child of target.childNodes) {
+        if (walk(child)) return count;
+    }
+
+    // `node` is the target itself (selection at boundary of the container)
+    if (node === target) {
+        // offsetInNode = number of child nodes to skip over
+        let skipped = 0;
+        for (const child of target.childNodes) {
+            if (skipped >= offsetInNode) break;
+            if (child.nodeName === 'BR') {
+                count += 1;
+            } else if (child.nodeType === Node.TEXT_NODE) {
+                const text = child.textContent || '';
+                for (const ch of text) {
+                    if (ch !== '\u200B') count++;
+                }
+            }
+            skipped++;
+        }
+        return count;
+    }
+
+    return -1; // not found
+}
+
+/**
+ * Compute the string-level caret offset (matching `getDOMText` semantics) from
+ * a Selection object within `target`.
+ *
+ * Handles:
+ *   - ZWS (U+200B) characters: counted as 0 characters
+ *   - BR elements: counted as 1 character (\n)
+ *
+ * Returns `{ start, end }` where start <= end.
+ * Falls back to `{ start: 0, end: 0 }` if the selection is outside `target`.
+ */
+export function getCaretOffsetInElement(target: HTMLElement, selection: Selection): { start: number; end: number } {
+    if (!selection || selection.rangeCount === 0) {
+        return { start: 0, end: 0 };
+    }
+
+    const range = selection.getRangeAt(0);
+    const anchorNode = range.startContainer;
+    const anchorOffset = range.startOffset;
+    const focusNode = range.endContainer;
+    const focusOffset = range.endOffset;
+
+    let start = _domOffsetToStringOffset(target, anchorNode, anchorOffset);
+    let end = _domOffsetToStringOffset(target, focusNode, focusOffset);
+
+    if (start < 0) start = 0;
+    if (end < 0) end = start;
+
+    // Normalize so start <= end
+    if (start > end) {
+        return { start: end, end: start };
+    }
+    return { start, end };
+}
+
+/**
+ * Set the caret in `target` at the string-level `offset` (matching getDOMText semantics).
+ * Walks child nodes counting characters the same way as getDOMText / getCaretOffsetInElement.
+ *
+ * If `offset` is beyond the content length, the caret is placed at the very end.
+ */
+export function setCaretAtOffset(target: HTMLElement, offset: number): void {
+    const selection = window.getSelection();
+    if (!selection) return;
+
+    let remaining = offset;
+    const range = document.createRange();
+    let placed = false;
+
+    function walk(node: Node): boolean {
+        if (node.nodeName === 'BR') {
+            if (remaining === 0) {
+                // Place caret before this BR
+                range.setStartBefore(node);
+                range.collapse(true);
+                placed = true;
+                return true;
+            }
+            remaining -= 1;
+            return false;
+        }
+
+        if (node.nodeType === Node.TEXT_NODE) {
+            const text = node.textContent || '';
+            let realChars = 0;
+            for (let i = 0; i < text.length; i++) {
+                if (text[i] === '\u200B') continue; // ZWS = 0 chars
+                if (remaining === 0) {
+                    // Place caret at this position (dom offset = i)
+                    range.setStart(node, i);
+                    range.collapse(true);
+                    placed = true;
+                    return true;
+                }
+                remaining--;
+                realChars++;
+            }
+            // If we consumed all real chars in this node and remaining == 0,
+            // place caret at the end of this text node (after last real char)
+            if (remaining === 0 && realChars > 0) {
+                range.setStart(node, text.length);
+                range.collapse(true);
+                placed = true;
+                return true;
+            }
+            return false;
+        }
+
+        // Element node: recurse into children
+        for (const child of node.childNodes) {
+            if (walk(child)) return true;
+        }
+        return false;
+    }
+
+    for (const child of target.childNodes) {
+        if (walk(child)) break;
+    }
+
+    if (!placed) {
+        // Offset is at or beyond the end — place caret at end of content
+        const lastChild = target.lastChild;
+        if (lastChild) {
+            if (lastChild.nodeType === Node.TEXT_NODE) {
+                range.setStart(lastChild, (lastChild.textContent || '').length);
+            } else {
+                range.setStartAfter(lastChild);
+            }
+        } else {
+            range.setStart(target, 0);
+        }
+        range.collapse(true);
+    }
+
+    selection.removeAllRanges();
+    selection.addRange(range);
+}
+
+/**
  * Format a cell value based on number format settings.
  * Returns the original value if not a valid number.
  */

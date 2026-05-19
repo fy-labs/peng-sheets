@@ -4,6 +4,15 @@ All notable changes to the "PengSheets" extension will be documented in this fil
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix Backspace / Delete / character insertion in cell edit mode ignoring caret position and operating on the end of the text. Edits now respect the current cursor position in both data cells and column headers. (#14)
+- Fix spreadsheet changes sometimes not appearing until saving, including adding tabs, pasting cells, and adding columns.
+
+### Changed
+
+- Remove the obsolete "Click to edit" hint shown in empty Document tabs. The hint referenced an interaction that no longer exists and was misleading.
+
 ## [1.4.0] - 2026-04-11
 
 ### Added

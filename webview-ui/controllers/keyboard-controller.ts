@@ -6,6 +6,7 @@ import {
     handleBackspaceAtZWS,
     handleSelectionDeletion
 } from '../utils/edit-mode-helpers';
+import { getDOMText, getCaretOffsetInElement } from '../utils/spreadsheet-helpers';
 import { isRealEnterKey } from '../utils/keyboard-utils';
 
 export class KeyboardController implements ReactiveController {
@@ -238,10 +239,21 @@ export class KeyboardController implements ReactiveController {
                 // because DOM includes both our inserted BR AND phantom BR from contenteditable.
                 if (inserted) {
                     this.host.editCtrl.hasUserInsertedNewline = true;
-                    // Append newline at cursor position (simplified: append at end)
-                    // TODO: For mid-content newline insertion, we'd need cursor position tracking
-                    const currentValue = this.host.editCtrl.trackedValue || '';
-                    this.host.editCtrl.trackedValue = currentValue + '\n';
+                    // Re-read trackedValue and caret from DOM after programmatic BR insertion.
+                    // We cannot use the 'input' event path here because programmatic DOM changes
+                    // do not fire 'input' events.
+                    const editingCell = root?.querySelector('.cell.editing') as HTMLElement | null;
+                    if (editingCell) {
+                        let t = getDOMText(editingCell);
+                        if (t.endsWith('\n')) t = t.slice(0, -1);
+                        this.host.editCtrl.trackedValue = t;
+                        const sel = getEditSelection(root);
+                        if (sel) {
+                            const { start, end } = getCaretOffsetInElement(editingCell, sel);
+                            this.host.editCtrl.trackedCaretStart = start;
+                            this.host.editCtrl.trackedCaretEnd = end;
+                        }
+                    }
                 }
                 return;
             }
@@ -299,15 +311,22 @@ export class KeyboardController implements ReactiveController {
             if (handleSelectionDeletion(selection)) {
                 e.preventDefault();
 
-                // Update trackedValue from the DOM after deletion
-                // Note: We do NOT dispatch an input event here because:
+                // Update trackedValue and caret from the DOM after deletion.
+                // We do NOT dispatch an input event here because:
                 // 1. The DOM is already updated via deleteContents()
                 // 2. Dispatching input would trigger re-render from original data, causing flicker
-                // trackedValue update is sufficient for commit to work correctly
                 const editingCell = root?.querySelector('.cell.editing') as HTMLElement | null;
                 if (editingCell) {
-                    const newValue = this.host.getDOMTextFromElement(editingCell);
+                    let newValue = getDOMText(editingCell);
+                    if (newValue.endsWith('\n')) newValue = newValue.slice(0, -1);
                     this.host.editCtrl.trackedValue = newValue;
+                    // After deletion, selection is collapsed to start of former selection
+                    const postSel = getEditSelection(root);
+                    if (postSel) {
+                        const { start, end } = getCaretOffsetInElement(editingCell, postSel);
+                        this.host.editCtrl.trackedCaretStart = start;
+                        this.host.editCtrl.trackedCaretEnd = end;
+                    }
                 }
                 return;
             }

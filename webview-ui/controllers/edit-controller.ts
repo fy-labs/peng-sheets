@@ -18,6 +18,14 @@ export class EditController implements ReactiveController {
     // issues with contenteditable phantom BR elements
     trackedValue: string | null = null;
 
+    /**
+     * Caret position in `trackedValue` (a string-level offset, NOT a DOM offset).
+     * `trackedCaretStart === trackedCaretEnd` means a collapsed caret.
+     * Both are clamped to [0, trackedValue.length].
+     */
+    trackedCaretStart: number = 0;
+    trackedCaretEnd: number = 0;
+
     // Metadata State
     pendingTitle: string = '';
     pendingDescription: string = '';
@@ -36,6 +44,9 @@ export class EditController implements ReactiveController {
         this.isReplacementMode = isReplacement;
         // Initialize tracked value with the starting content
         this.trackedValue = this.pendingEditValue;
+        // Initialize caret to end of content (user can reposition with mouse/keyboard)
+        this.trackedCaretStart = this.trackedValue.length;
+        this.trackedCaretEnd = this.trackedValue.length;
         // Clear copy range indicator when editing starts (centralized for all entry points)
         this.host.clipboardCtrl.clearCopiedRange();
         this.host.requestUpdate();
@@ -48,6 +59,8 @@ export class EditController implements ReactiveController {
         this.isReplacementMode = false;
         this.hasUserInsertedNewline = false;
         this.trackedValue = null;
+        this.trackedCaretStart = 0;
+        this.trackedCaretEnd = 0;
         this.host.requestUpdate();
     }
 
