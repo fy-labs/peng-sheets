@@ -145,6 +145,22 @@ describe('SpreadsheetService (TypeScript)', () => {
             expect(message.undoStopBefore).toBe(true);
             expect(message.undoStopAfter).toBe(true);
         });
+
+        it('should not leave normal edits in syncing mode', async () => {
+            service.addSheet('Sheet2');
+
+            expect(mockVscode.postMessage).toHaveBeenCalled();
+            expect(service.isSyncing).toBe(false);
+        });
+
+        it('should not leave explicit batches in syncing mode', async () => {
+            service.startBatch();
+            service.updateRangeBatch(0, 0, 0, 0, 'Value1');
+            service.endBatch();
+
+            expect(mockVscode.postMessage).toHaveBeenCalled();
+            expect(service.isSyncing).toBe(false);
+        });
     });
 
     // --- State Query Tests ---
