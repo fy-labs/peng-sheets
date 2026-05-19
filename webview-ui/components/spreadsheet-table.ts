@@ -545,15 +545,6 @@ export class SpreadsheetTable extends LitElement {
     }
 
     /**
-     * Helper to extract text from an element using getDOMText utility.
-     * Used by KeyboardController to update trackedValue after Option+Enter.
-     */
-    public getDOMTextFromElement(element: HTMLElement): string {
-        const contentSpan = element.querySelector('.cell-content') as HTMLElement;
-        return getDOMText(contentSpan || element);
-    }
-
-    /**
      * Handle opening the validation dialog from context menu.
      */
     private _handleOpenValidationDialog = (e: CustomEvent<{ index: number }>) => {

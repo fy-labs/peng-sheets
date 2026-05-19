@@ -1,6 +1,7 @@
 import { ReactiveController } from 'lit';
 import { SpreadsheetTable } from '../components/spreadsheet-table';
-import { getDOMText } from '../utils/spreadsheet-helpers';
+import { getDOMText, getCaretOffsetInElement, setCaretAtOffset } from '../utils/spreadsheet-helpers';
+import { getSelection as getEditSelection } from '../utils/edit-mode-helpers';
 import { SelectionRange } from './selection-controller';
 import { ClipboardStore } from '../stores/clipboard-store';
 // import { normalizeEditContent, findEditingCell } from '../utils/edit-mode-helpers';
@@ -645,130 +646,65 @@ export class EventController implements ReactiveController {
         const inputEvent = e as InputEvent;
         const target = e.target as HTMLElement;
 
-        // Operation-based tracking: apply edit operation to trackedValue directly
-        // This avoids unreliable DOM parsing where BR count doesn't match newline count
-        const currentValue = this.host.editCtrl.trackedValue ?? '';
+        // Skip during IME composition - browser manages DOM internally; we update on compositionend
+        if (inputEvent.isComposing) {
+            return;
+        }
 
+        // 1. Re-read trackedValue from DOM (post-input state).
+        //    This is more reliable than operation-based tracking because the browser
+        //    has already made the correct DOM change. The only problem is phantom BRs,
+        //    which getDOMText handles by counting them as '\n', and we strip any
+        //    single trailing '\n' that contenteditable always appends.
+        if (target) {
+            let text = getDOMText(target);
+            if (text.endsWith('\n')) {
+                text = text.slice(0, -1);
+            }
+            this.host.editCtrl.trackedValue = text;
+        }
+
+        // 2. Sync caret position from DOM selection into trackedCaret*.
+        //    We read the selection AFTER the input event so it reflects the browser's
+        //    post-input caret position.
+        const root = this.host.viewShadowRoot || this.host.shadowRoot;
+        const selection = getEditSelection(root);
+        if (selection && target) {
+            const { start, end } = getCaretOffsetInElement(target, selection);
+            this.host.editCtrl.trackedCaretStart = start;
+            this.host.editCtrl.trackedCaretEnd = end;
+        }
+
+        // 3. inputType-specific side effects (flags only, no string manipulation).
         switch (inputEvent.inputType) {
-            case 'insertText':
-                // Insert character(s) at cursor position (simplified: append at end)
-                if (inputEvent.data) {
-                    this.host.editCtrl.trackedValue = currentValue + inputEvent.data;
-                }
-                break;
-
             case 'insertLineBreak':
             case 'insertParagraph':
-                // User pressed Enter without modifier (but this shouldn't happen in edit mode)
-                // or Option+Enter. Already handled in keyboard-controller, but handle here too.
                 this.host.editCtrl.hasUserInsertedNewline = true;
-                this.host.editCtrl.trackedValue = currentValue + '\n';
                 break;
-
-            case 'deleteContentBackward':
-                // Backspace: remove character before cursor (simplified: remove last char)
-                if (currentValue.length > 0) {
-                    this.host.editCtrl.trackedValue = currentValue.slice(0, -1);
-                }
-                break;
-
-            case 'deleteContentForward':
-                // Delete: remove character after cursor (simplified: remove last char for now)
-                // In a full implementation, this would need cursor position tracking
-                if (currentValue.length > 0) {
-                    this.host.editCtrl.trackedValue = currentValue.slice(0, -1);
-                }
-                break;
-
-            case 'deleteByCut':
-            case 'deleteByDrag':
-            case 'deleteContent':
-            case 'deleteWordBackward':
-            case 'deleteWordForward':
-                // Complex deletions - fall back to DOM parsing with cleanup
-                if (target) {
-                    let text = getDOMText(target);
-                    // Strip trailing phantom BR (always exactly 1)
-                    if (text.endsWith('\n')) {
-                        text = text.slice(0, -1);
-                    }
-                    this.host.editCtrl.trackedValue = text;
-                }
-                break;
-
-            case 'insertFromPaste':
-            case 'insertFromDrop':
-                // Paste/drop - fall back to DOM parsing
-                if (target) {
-                    let text = getDOMText(target);
-                    if (text.endsWith('\n')) {
-                        text = text.slice(0, -1);
-                    }
-                    this.host.editCtrl.trackedValue = text;
-                }
-                break;
-
             default:
-                // Unknown input type - fall back to DOM parsing
-                if (target) {
-                    let text = getDOMText(target);
-                    if (text.endsWith('\n')) {
-                        text = text.slice(0, -1);
-                    }
-                    this.host.editCtrl.trackedValue = text;
-                }
                 break;
         }
 
-        // Sync DOM with trackedValue to remove phantom BRs and fix UI discrepancy
-        // This ensures the displayed content matches the actual tracked value
+        // 4. DOM sync: only rewrite innerHTML when phantom BRs are present.
+        //    Phantom BRs occur when the DOM has more BRs than trackedValue's '\n' count.
+        //    When we rewrite, we restore the caret to the tracked position (not end-of-content).
         if (target && this.host.editCtrl.trackedValue !== null) {
             const trackedValue = this.host.editCtrl.trackedValue;
-            // Convert trackedValue to expected HTML (replace \n with <br>)
             const expectedHTML = trackedValue.replace(/\n/g, '<br>');
-            const currentHTML = target.innerHTML;
+            const normalizedCurrent = target.innerHTML.replace(/<br\s*\/?>/gi, '<br>');
 
-            // Normalize HTML for comparison (standardize BR tags)
-            const normalizedCurrent = currentHTML.replace(/<br\s*\/?>/gi, '<br>');
-            const normalizedExpected = expectedHTML.replace(/<br\s*\/?>/gi, '<br>');
-
-            // Count trailing BRs
-            const expectedBRCount = (normalizedExpected.match(/<br>/g) || []).length;
+            const expectedBRCount = (expectedHTML.match(/<br>/g) || []).length;
             const currentBRCount = (normalizedCurrent.match(/<br>/g) || []).length;
+            const hasPhantomBRs = currentBRCount > expectedBRCount;
 
-            // Strip trailing BRs for content comparison
-            const contentCurrent = normalizedCurrent.replace(/(<br>)+$/, '');
-            const contentExpected = normalizedExpected.replace(/(<br>)+$/, '');
-
-            // Sync if content differs OR if DOM has more BRs than expected (phantom BRs)
-            const contentDiffers = contentExpected !== contentCurrent;
-            const hasExtraBRs = currentBRCount > expectedBRCount; // No extra BRs allowed
-
-            if (contentDiffers || hasExtraBRs) {
-                // Save selection/caret position
-                const selection = window.getSelection();
-                const hasSelection = selection && selection.rangeCount > 0;
-
-                // Update DOM - set exact content from trackedValue
-                // Don't add trailing BR - let contenteditable handle caret positioning
+            if (hasPhantomBRs) {
                 target.innerHTML = expectedHTML;
-
-                // Restore caret to end
-                if (hasSelection) {
-                    const range = document.createRange();
-                    if (target.lastChild) {
-                        range.setStartAfter(target.lastChild);
-                    } else {
-                        range.setStart(target, 0);
-                    }
-                    range.collapse(true);
-                    selection!.removeAllRanges();
-                    selection!.addRange(range);
-                }
+                // Restore caret to tracked position (not end-of-content)
+                setCaretAtOffset(target, this.host.editCtrl.trackedCaretEnd);
             }
         }
 
-        // Handle empty content cleanup
+        // 5. Empty content cleanup
         if (target && target.innerHTML) {
             const stripped = target.innerHTML
                 .replace(/<br\s*\/?>/gi, '')
