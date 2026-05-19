@@ -49,6 +49,8 @@ export class SpreadsheetEditorProvider implements vscode.CustomTextEditorProvide
         webviewPanel: vscode.WebviewPanel,
         _token: vscode.CancellationToken
     ): Promise<void> {
+        webviewPanel.iconPath = new vscode.ThemeIcon('table');
+
         // Allow the webview to load resources from:
         // 1. Extension's own output directory
         // 2. Extension's resources directory

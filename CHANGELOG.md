@@ -13,6 +13,7 @@ All notable changes to the "PengSheets" extension will be documented in this fil
 ### Changed
 
 - Remove the obsolete "Click to edit" hint shown in empty Document tabs. The hint referenced an interaction that no longer exists and was misleading.
+- Show a table icon on editor tabs opened with PengSheets, making them easier to distinguish from plain Markdown tabs.
 
 ## [1.4.0] - 2026-04-11
 
