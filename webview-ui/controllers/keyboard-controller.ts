@@ -354,29 +354,30 @@ export class KeyboardController implements ReactiveController {
             // Get the editing cell's text content to determine behavior
             const root = this.host.viewShadowRoot || this.host.shadowRoot;
             const editingCell = root?.querySelector('.cell.editing') as HTMLElement | null;
-            const cellText = editingCell?.textContent || '';
-            const isMultiline = cellText.includes('\n') || editingCell?.querySelector('br') !== null;
+            const editTarget =
+                (editingCell?.querySelector('[contenteditable="true"]') as HTMLElement | null) ?? editingCell;
+            const cellText = editTarget ? getDOMText(editTarget, true) : '';
+            const isHeaderEdit = this.host.selectionCtrl.selectedRow === -1;
+            const isMultiline = cellText.includes('\n') || editTarget?.querySelector('br') !== null;
 
             // ArrowUp/Down in multiline cells: always stay in cell (prevent accidental exit)
             if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && isMultiline) {
                 return; // Let browser handle
             }
 
-            // Check if cursor is at boundary for committing and navigating
-            const selection = window.getSelection();
-            if (selection && selection.rangeCount > 0) {
-                const range = selection.getRangeAt(0);
-                const isCollapsed = range.collapsed;
+            // Column headers are single-line editable spans. Up/Down should not leave edit mode.
+            if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && isHeaderEdit) {
+                return; // Let browser keep focus/caret in the header editor
+            }
 
-                if (isCollapsed && editingCell) {
+            // Check if cursor is at boundary for committing and navigating
+            const selection = getEditSelection(root);
+            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && selection && editTarget) {
+                if (selection.isCollapsed) {
+                    const { start, end } = getCaretOffsetInElement(editTarget, selection);
                     // ArrowLeft at position 0: commit & navigate left
                     if (e.key === 'ArrowLeft') {
-                        const atStart =
-                            range.startOffset === 0 &&
-                            (range.startContainer === editingCell ||
-                                range.startContainer === editingCell.firstChild ||
-                                (range.startContainer.nodeType === Node.TEXT_NODE &&
-                                    range.startContainer === editingCell.childNodes[0]));
+                        const atStart = start === 0;
                         if (!atStart) {
                             return; // Let browser move cursor within text
                         }
@@ -384,19 +385,13 @@ export class KeyboardController implements ReactiveController {
 
                     // ArrowRight at end of text: commit & navigate right
                     if (e.key === 'ArrowRight') {
-                        const lastChild = editingCell.lastChild;
-                        const atEnd =
-                            (range.startContainer === editingCell &&
-                                range.startOffset === editingCell.childNodes.length) ||
-                            (range.startContainer === lastChild &&
-                                range.startOffset === (lastChild.textContent?.length || 0)) ||
-                            (range.startContainer.nodeType === Node.TEXT_NODE &&
-                                range.startOffset === range.startContainer.textContent?.length &&
-                                !range.startContainer.nextSibling);
+                        const atEnd = end === cellText.length;
                         if (!atEnd) {
                             return; // Let browser move cursor within text
                         }
                     }
+                } else if (isHeaderEdit) {
+                    return; // Let browser collapse/adjust the text selection
                 }
             }
 
