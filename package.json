@@ -4,7 +4,7 @@
     "displayName": "PengSheets - Markdown Spreadsheet Editor",
     "description": "Excel-like Markdown table editor — multi-sheet workbooks, cross-table lookups, and live sync.",
     "icon": "images/icon.png",
-    "version": "1.4.0",
+    "version": "1.4.1",
     "engines": {
         "vscode": "^1.90.0"
     },

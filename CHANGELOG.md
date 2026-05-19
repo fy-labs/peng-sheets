@@ -4,6 +4,8 @@ All notable changes to the "PengSheets" extension will be documented in this fil
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-05-19
+
 ### Fixed
 
 - Fix Backspace / Delete / character insertion in cell edit mode ignoring caret position and operating on the end of the text. Edits now respect the current cursor position in both data cells and column headers. (#14)
