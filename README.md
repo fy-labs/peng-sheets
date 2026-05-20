@@ -5,21 +5,18 @@
 </p>
 
 <p align="center">
-  <strong>Transform your Markdown tables into a powerful spreadsheet experience.</strong>
+  <strong>Excel-like Markdown table editor — multi-sheet workbooks, cross-table lookups. Files load instantly from Python & Node.js scripts.</strong>
 </p>
 
 <p align="center">
   <a href="https://open-vsx.org/extension/f-y/peng-sheets">
     <img src="https://img.shields.io/open-vsx/v/f-y/peng-sheets?style=flat-square&label=version" alt="Version">
   </a>
-  <a href="https://marketplace.visualstudio.com/items?itemName=f-y.peng-sheets">
-    <img src="https://img.shields.io/visual-studio-marketplace/i/f-y.peng-sheets?style=flat-square&label=VS%20Marketplace" alt="VS Marketplace Installs">
-  </a>
   <a href="https://open-vsx.org/extension/f-y/peng-sheets">
-    <img src="https://img.shields.io/open-vsx/dt/f-y/peng-sheets?style=flat-square&label=Open%20VSX" alt="Open VSX Downloads">
+    <img src="https://img.shields.io/open-vsx/dt/f-y/peng-sheets?style=flat-square&label=Open%20VSX%20downloads" alt="Open VSX Downloads">
   </a>
-  <a href="https://github.com/f-y/peng-sheets/blob/main/LICENSE">
-    <img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License">
+  <a href="https://marketplace.visualstudio.com/items?itemName=f-y.peng-sheets">
+    <img src="https://vsmarketplacebadges.dev/installs-short/f-y.peng-sheets.svg?style=flat-square&label=VS%20Code%20installs" alt="VS Code Installs">
   </a>
 </p>
 
