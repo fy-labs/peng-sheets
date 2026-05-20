@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Excel-like Markdown table editor — multi-sheet workbooks, cross-table lookups. Workbooks load instantly in Python & Node.js scripts.</strong>
+  <strong>Excel-like Markdown table editor — multi-sheet workbooks, cross-table lookups. Files load instantly from Python & Node.js scripts.</strong>
 </p>
 
 <p align="center">

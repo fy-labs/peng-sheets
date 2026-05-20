@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Excel風Markdownテーブルエディタ — マルチシート複数テーブル、テーブル間ルックアップが可能。作成ファイルはPython/Node.jsからすぐに読込可能。</strong>
+  <strong>PengSheetsはExcel風Markdownテーブルエディタです。マルチシート複数テーブル、テーブル間ルックアップが可能で、作成ファイルはPython/Node.jsからすぐに読み込めます。</strong>
 </p>
 
 <p align="center">

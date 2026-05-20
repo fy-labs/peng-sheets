@@ -2,7 +2,7 @@
     "name": "peng-sheets",
     "publisher": "f-y",
     "displayName": "PengSheets - Markdown Spreadsheet Editor",
-    "description": "Excel-like Markdown table editor — multi-sheet workbooks, cross-table lookups. Workbooks load instantly in Python & Node.js scripts.",
+    "description": "Excel-like Markdown table editor — multi-sheet workbooks, cross-table lookups. Files load instantly from Python & Node.js scripts.",
     "icon": "images/icon.png",
     "version": "1.4.1",
     "engines": {
